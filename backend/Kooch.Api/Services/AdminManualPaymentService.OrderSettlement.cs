@@ -198,8 +198,28 @@ public sealed partial class AdminManualPaymentService
             // source per room. Do not turn a legacy partial receipt into split funding here.
             if (balances[reservation.Id] != reservation.FinalAmount)
                 return $"رزرو {reservation.ReservationNumber} دارای پرداخت جزئی قبلی است و پیش از تسویه نیاز به بررسی مالی دارد.";
-            try { EnsureDirectReservationCanAcceptPayment(reservation, session.Currency, now); }
-            catch (InvalidOperationException) { return $"رزرو {reservation.ReservationNumber} در وضعیت یا مهلت مجاز پرداخت نیست."; }
+            var paymentBlocker = GetDirectReservationPaymentBlocker(reservation, session.Currency, now);
+            if (paymentBlocker is not null)
+                return paymentBlocker switch
+                {
+                    DirectReservationPaymentBlocker.StatusNotPayable => ReservationStatusNormalizer.Normalize(reservation.Status) switch
+                    {
+                        ReservationStatus.PendingApproval or ReservationStatus.Draft =>
+                            $"رزرو {reservation.ReservationNumber} در انتظار تأیید است؛ ابتدا رزرو را تأیید کنید، سپس ماندهٔ سفارش را دوباره دریافت کنید.",
+                        ReservationStatus.Pending =>
+                            $"رزرو {reservation.ReservationNumber} در وضعیت «در انتظار» است و قابل پرداخت نیست؛ وضعیت و مسیر مجاز آن را در جزئیات رزرو بررسی کنید.",
+                        ReservationStatus.Cancelled => $"رزرو {reservation.ReservationNumber} لغو شده و قابل تسویه نیست.",
+                        ReservationStatus.PaymentExpired => $"مهلت پرداخت رزرو {reservation.ReservationNumber} پایان یافته است؛ وضعیت رزرو را در جزئیات بررسی کنید.",
+                        _ => $"رزرو {reservation.ReservationNumber} در وضعیت قابل پرداخت نیست؛ وضعیت رزرو را در جزئیات بررسی کنید."
+                    },
+                    DirectReservationPaymentBlocker.MissingDeadline =>
+                        $"برای رزرو {reservation.ReservationNumber} مهلت پرداخت ثبت نشده است؛ وضعیت و مهلت را در جزئیات رزرو بررسی کنید.",
+                    DirectReservationPaymentBlocker.ExpiredDeadline =>
+                        $"مهلت پرداخت رزرو {reservation.ReservationNumber} پایان یافته است؛ وضعیت رزرو را در جزئیات بررسی کنید.",
+                    DirectReservationPaymentBlocker.SessionPaymentRequired =>
+                        $"رزرو {reservation.ReservationNumber} باید از مسیر پرداخت سفارش آنلاین پرداخت شود.",
+                    _ => $"ارز پرداخت با ارز رزرو {reservation.ReservationNumber} یکسان نیست؛ سفارش نیاز به بررسی مالی دارد."
+                };
             if (reservation.PaidAtUtc.HasValue) return $"وضعیت مالی رزرو {reservation.ReservationNumber} نیاز به بررسی دارد.";
         }
         return null;

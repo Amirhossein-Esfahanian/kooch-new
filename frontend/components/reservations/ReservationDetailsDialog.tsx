@@ -1557,7 +1557,10 @@ export function ReservationDetailsDialog({
   open,
   reservation,
 }: ReservationDetailsDialogProps) {
-  const currencyLabel = useSiteCurrencyLabel();
+  const siteCurrencyLabel = useSiteCurrencyLabel();
+  const currencyLabel = reservation?.source === "AdminCreated" && reservation.currency
+    ? reservation.currency === "IRR" ? "ریال" : reservation.currency
+    : siteCurrencyLabel;
   const guestName = reservation?.guestName ?? reservation?.guestFullName ?? "-";
   const guestEmail = reservation?.guestEmail ?? reservation?.email ?? "-";
   const identityNumber =

@@ -24,6 +24,12 @@ public sealed partial class AdminManualBookingSqlServerTests
             db.Availabilities.Add(new() { RoomTypeId = type.Id, Date = date, AvailableCount = 3, Status = AvailabilityStatus.OnRequest });
             db.RoomDailyPrices.Add(new() { RoomTypeId = type.Id, Date = date, BasePrice = 100, GuestType = PricingGuestType.Iranian });
         }
+        foreach (var (key, value) in new[] { ("reservation.ownerApprovalWindowMinutes", "45"), ("reservation.paymentWindowMinutes", "45"), ("ReservationCommissionPercent", "10") })
+        {
+            var setting = await db.SiteSettings.SingleOrDefaultAsync(s => s.Key == key);
+            if (setting is null) db.SiteSettings.Add(new() { Key = key, Value = value, IsActive = true });
+            else { setting.Value = value; setting.IsActive = true; }
+        }
         await db.SaveChangesAsync();
         return new(ids.AdminId, ids.PropertyId, type.Id, guest.Id, []);
     }
@@ -39,6 +45,101 @@ public sealed partial class AdminManualBookingSqlServerTests
     {
         var children = new ChildPricingRuleResolver(db);
         return new(db, new PricingService(), children, new ReservationRulesResolver(db, children));
+    }
+
+    [SqlServerWalletFact]
+    public async Task ManualCurrency_PreviewCreateApprovalBalanceAndSyntheticReceiptRemainInRials()
+    {
+        var seed = await SeedTypeBasedAsync();
+        int orderId, reservationId;
+        await using (var db = Open())
+        {
+            foreach (var night in await db.RoomDailyPrices.Where(p => p.RoomTypeId == seed.RoomTypeId).ToListAsync())
+                night.BasePrice = 2_500_000;
+            await db.SaveChangesAsync();
+            var preview = await Reservations(db).PreviewManualBookingPriceAsync(new()
+            {
+                PropertyId = seed.PropertyId, RoomTypeId = seed.RoomTypeId, CheckInDate = Arrival,
+                CheckOutDate = Arrival.AddDays(2), Adults = 1, RoomCount = 1, ForManualCreation = true
+            });
+            Assert.Equal("IRR", preview.Currency);
+            Assert.Equal(5_000_000m, preview.FinalAmount);
+            var request = TypeRequest(seed, 1);
+            var created = await Reservations(db).CreateAsync(request, (seed.AdminId, UserRole.SuperAdmin));
+            Assert.Equal(preview.Currency, created.Currency);
+            Assert.Equal(preview.FinalAmount, created.TotalAmount);
+            orderId = created.BookingSessionId;
+            reservationId = Assert.Single(created.Reservations).Id;
+        }
+        await using (var read = Open())
+        {
+            var reservation = await read.Reservations.SingleAsync(r => r.Id == reservationId);
+            Assert.Equal(ReservationStatus.PendingApproval, reservation.Status);
+            Assert.Null(reservation.PaymentExpiresAtUtc);
+            Assert.Equal("IRR", reservation.Currency);
+            Assert.Equal(5_000_000m, reservation.FinalAmount);
+            var blocked = await Payments(read).GetOrderBalanceAsync(orderId, seed.AdminId);
+            Assert.False(blocked.CanSettle);
+            Assert.Equal(5_000_000m, blocked.RemainingAmount);
+            Assert.Contains("ابتدا رزرو را تأیید کنید", blocked.UnavailableReason);
+        }
+        await using (var approve = Open())
+            await Reservations(approve).ApproveAsync(reservationId, (seed.AdminId, UserRole.SuperAdmin));
+        await using (var read = Open())
+        {
+            var eligible = await Payments(read).GetOrderBalanceAsync(orderId, seed.AdminId);
+            Assert.True(eligible.CanSettle);
+            Assert.Null(eligible.UnavailableReason);
+            Assert.Equal("IRR", eligible.Currency);
+            Assert.Equal(5_000_000m, eligible.RemainingAmount);
+            Assert.Empty(await read.Payments.Where(p => p.BookingSessionId == orderId || p.ReservationId == reservationId).ToListAsync());
+            var syntheticReceipt = Receipt($"currency-{orderId}");
+            syntheticReceipt.ConfirmedAmount = eligible.RemainingAmount;
+            var paid = await Payments(read).SettleOrderAsync(orderId, syntheticReceipt, seed.AdminId);
+            Assert.Equal(eligible.RemainingAmount, paid.Amount);
+            Assert.Equal(eligible.Currency, paid.Currency);
+        }
+        await using var fresh = Open();
+        var payment = await fresh.Payments.SingleAsync(p => p.BookingSessionId == orderId);
+        Assert.Equal(5_000_000m, payment.Amount);
+        Assert.Equal("IRR", payment.Currency);
+        var allocation = await fresh.PaymentItems.SingleAsync(i => i.ReservationId == reservationId);
+        Assert.Equal(payment.Amount, allocation.AllocatedAmount);
+        Assert.Equal(payment.Currency, allocation.Currency);
+        Assert.Equal(0m, (await Payments(fresh).GetOrderBalanceAsync(orderId, seed.AdminId)).RemainingAmount);
+    }
+
+    [SqlServerWalletFact]
+    public async Task ManualPending_RemainsBlockedWithoutInventingAnApprovalTransition()
+    {
+        var seed = await SeedTypeBasedAsync();
+        int orderId, reservationId;
+        await using (var db = Open())
+        {
+            foreach (var night in await db.Availabilities.Where(a => a.RoomTypeId == seed.RoomTypeId).ToListAsync())
+                night.Status = AvailabilityStatus.Available;
+            await db.SaveChangesAsync();
+            var created = await Reservations(db).CreateAsync(TypeRequest(seed, 1), (seed.AdminId, UserRole.SuperAdmin));
+            orderId = created.BookingSessionId;
+            reservationId = Assert.Single(created.Reservations).Id;
+        }
+        await using (var read = Open())
+        {
+            var reservation = await read.Reservations.SingleAsync(r => r.Id == reservationId);
+            Assert.Equal(ReservationStatus.Pending, reservation.Status);
+            Assert.Null(reservation.PaymentExpiresAtUtc);
+            var balance = await Payments(read).GetOrderBalanceAsync(orderId, seed.AdminId);
+            Assert.False(balance.CanSettle);
+            Assert.Contains("در انتظار", balance.UnavailableReason);
+            Assert.DoesNotContain("مهلت", balance.UnavailableReason);
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                Reservations(read).ApproveAsync(reservationId, (seed.AdminId, UserRole.SuperAdmin)));
+            Assert.Contains("Invalid reservation status transition", error.Message);
+        }
+        await using var fresh = Open();
+        Assert.Equal(ReservationStatus.Pending, (await fresh.Reservations.SingleAsync(r => r.Id == reservationId)).Status);
+        Assert.Empty(await fresh.Payments.Where(p => p.BookingSessionId == orderId || p.ReservationId == reservationId).ToListAsync());
+        Assert.Empty(await fresh.PaymentItems.Where(i => i.ReservationId == reservationId).ToListAsync());
     }
 
     [SqlServerWalletFact]

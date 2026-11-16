@@ -341,26 +341,33 @@ public sealed partial class AdminManualPaymentService(
         string currency,
         DateTime now)
     {
+        var blocker = GetDirectReservationPaymentBlocker(reservation, currency, now);
+        if (blocker is not null)
+            throw new InvalidOperationException(blocker switch
+            {
+                DirectReservationPaymentBlocker.SessionPaymentRequired => "Booking session reservations must use the session payment flow.",
+                DirectReservationPaymentBlocker.StatusNotPayable => "Reservation is not awaiting payment confirmation.",
+                DirectReservationPaymentBlocker.MissingDeadline or DirectReservationPaymentBlocker.ExpiredDeadline => "Reservation payment window has expired.",
+                _ => "Payment currency does not match the reservation."
+            });
+    }
+
+    private enum DirectReservationPaymentBlocker { SessionPaymentRequired, StatusNotPayable, MissingDeadline, ExpiredDeadline, CurrencyMismatch }
+
+    private static DirectReservationPaymentBlocker? GetDirectReservationPaymentBlocker(
+        Reservation reservation, string currency, DateTime now)
+    {
         if (ReservationPaymentFlow.RequiresSessionPayment(reservation))
-        {
-            throw new InvalidOperationException(
-                "Booking session reservations must use the session payment flow.");
-        }
-
+            return DirectReservationPaymentBlocker.SessionPaymentRequired;
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment)
-        {
-            throw new InvalidOperationException("Reservation is not awaiting payment confirmation.");
-        }
-
-        if (reservation.PaymentExpiresAtUtc is null || reservation.PaymentExpiresAtUtc <= now)
-        {
-            throw new InvalidOperationException("Reservation payment window has expired.");
-        }
-
+            return DirectReservationPaymentBlocker.StatusNotPayable;
+        if (reservation.PaymentExpiresAtUtc is null)
+            return DirectReservationPaymentBlocker.MissingDeadline;
+        if (reservation.PaymentExpiresAtUtc <= now)
+            return DirectReservationPaymentBlocker.ExpiredDeadline;
         if (!string.Equals(reservation.Currency.Trim(), currency, StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidOperationException("Payment currency does not match the reservation.");
-        }
+            return DirectReservationPaymentBlocker.CurrencyMismatch;
+        return null;
     }
 
     private static void EnsurePendingVerification(Payment payment, ManualPaymentDetails details)

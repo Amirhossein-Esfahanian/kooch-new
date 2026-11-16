@@ -79,3 +79,34 @@ it("does not report a committed settlement as failed when list refresh fails", a
   expect(mocks.warning).toHaveBeenCalledOnce();
   expect(screen.queryByText("refresh")).toBeNull();
 });
+
+it("enables confirmation only after a refreshed server balance becomes eligible, without auto-approval or payment", async () => {
+  const reason = "رزرو R-123456 در انتظار تأیید است؛ ابتدا رزرو را تأیید کنید، سپس ماندهٔ سفارش را دوباره دریافت کنید.";
+  mocks.api.mockResolvedValueOnce({ ...balance, canSettle: false, unavailableReason: reason });
+  render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
+  const confirm = await open();
+  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(reason)).toBeTruthy();
+  fireEvent.click(confirm);
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+  mocks.api.mockResolvedValueOnce(balance);
+  fireEvent.click(screen.getByRole("button", { name: "دریافت دوبارهٔ مانده" }));
+  await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+  expect(screen.queryByText(reason)).toBeNull();
+  expect(mocks.api.mock.calls.map(([path]) => path)).toEqual([
+    "/admin/manual-payments/orders/15", "/admin/manual-payments/orders/15"
+  ]);
+});
+
+it.each([
+  "رزرو R-123456 در وضعیت «در انتظار» است و قابل پرداخت نیست؛ وضعیت و مسیر مجاز آن را در جزئیات رزرو بررسی کنید.",
+  "برای رزرو R-123456 مهلت پرداخت ثبت نشده است؛ وضعیت و مهلت را در جزئیات رزرو بررسی کنید.",
+  "مهلت پرداخت رزرو R-123456 پایان یافته است؛ وضعیت رزرو را در جزئیات بررسی کنید.",
+  "رزرو R-123456 دارای پرداخت جزئی قبلی است و پیش از تسویه نیاز به بررسی مالی دارد.",
+])("renders the server's specific block reason unchanged: %s", async reason => {
+  mocks.api.mockResolvedValue({ ...balance, canSettle: false, unavailableReason: reason });
+  render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
+  expect(((await open()) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText(reason)).toBeTruthy();
+  expect(mocks.api).toHaveBeenCalledTimes(1);
+});

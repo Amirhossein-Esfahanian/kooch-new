@@ -691,8 +691,11 @@ export function ManualReservationDialog({
     ? editStatusOptions
     : createStatusOptions;
   const displayedStatus = selectedStatus;
+  const previewCurrencyLabel = isWizard
+    ? pricePreview?.currency === "IRR" || !pricePreview ? "ریال" : pricePreview.currency
+    : currencyLabel;
   const childRuleSummary = effectiveRules
-    ? buildChildRuleSummary(effectiveRules, currencyLabel)
+    ? buildChildRuleSummary(effectiveRules, previewCurrencyLabel)
     : null;
   const availableChildAgeToggles = effectiveRules
     ? childAgeToggleOptions(effectiveRules)
@@ -2235,31 +2238,31 @@ export function ManualReservationDialog({
                     <span>
                       قیمت پایه:{" "}
                       {formatCurrency(pricePreview.baseAmount, {
-                        currencyLabel,
+                        currencyLabel: previewCurrencyLabel,
                       })}
                     </span>
                     <span>
                       هزینه کودک:{" "}
                       {formatCurrency(pricePreview.childAmount, {
-                        currencyLabel,
+                        currencyLabel: previewCurrencyLabel,
                       })}
                     </span>
                     <span>
                       هزینه نفر اضافه:{" "}
                       {formatCurrency(pricePreview.extraGuestAmount, {
-                        currencyLabel,
+                        currencyLabel: previewCurrencyLabel,
                       })}
                     </span>
                     <span>
                       تخفیف پروموشن:{" "}
                       {formatCurrency(pricePreview.discountAmount, {
-                        currencyLabel,
+                        currencyLabel: previewCurrencyLabel,
                       })}
                     </span>
                     <span className="font-bold">
                       مبلغ کل:{" "}
                       {formatCurrency(pricePreview.finalAmount, {
-                        currencyLabel,
+                        currencyLabel: previewCurrencyLabel,
                       })}
                     </span>
                   </div>

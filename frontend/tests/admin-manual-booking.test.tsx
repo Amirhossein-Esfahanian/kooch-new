@@ -1,12 +1,17 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
+import { ManualOrderSettlement } from "@/components/reservations/ManualOrderSettlement";
+import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn(), success: vi.fn() }));
 vi.mock("@/lib/owner-api", async importOriginal => ({
   ...await importOriginal<typeof import("@/lib/owner-api")>(), apiRequest: mocks.api,
 }));
 vi.mock("sonner", () => ({ toast: { error: mocks.error, success: mocks.success } }));
+vi.mock("@/lib/currency", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/currency")>(), useSiteCurrencyLabel: () => "تومان",
+}));
 vi.mock("@/components/KoochDatePicker", () => ({ KoochDatePicker: ({ onChange }: {
   onChange: (value: { startDate: string; endDate: string }) => void;
 }) => <><button type="button" onClick={() => onChange({ startDate: "2035-02-01", endDate: "2035-02-03" })}>انتخاب تاریخ آزمون</button>
@@ -78,6 +83,51 @@ async function selectRooms() {
   fireEvent.click(rooms);
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
 }
+
+it("keeps API currency and amounts consistent from preview through creation and settlement despite a toman site label", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    if (path === "/admin/manual-payments/orders/15") return { sessionCode: "O-123456", currency: "IRR",
+      totalAmount: 5_000_000, remainingAmount: 5_000_000, canSettle: true, unavailableReason: null };
+    if (path === "/admin/manual-payments/orders/15/settle") return {};
+    const result = await original(path, ...args);
+    if (path === "/admin/reservations/price-preview") return { ...result, baseAmount: 5_000_000, finalAmount: 5_000_000,
+      roomPrices: result.roomPrices.map((price: object, index: number) => ({ ...price, finalAmount: [2_000_000, 2_000_000, 1_000_000][index] })) };
+    if (path === "/admin/reservations") return { ...result, totalAmount: 5_000_000,
+      reservations: result.reservations.map((reservation: object, index: number) => ({ ...reservation, finalAmount: [2_000_000, 2_000_000, 1_000_000][index] })) };
+    return result;
+  });
+  await openStay(); await selectRooms();
+  expect(screen.getByText(/مبلغ کل:/).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
+  expect(screen.getByText(/قیمت پایه:/).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
+  expect(screen.queryByText(/تومان/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect(screen.getByText("۵٬۰۰۰٬۰۰۰ ریال")).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  expect(within(result).getByText(/مبلغ کل سفارش/).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
+  fireEvent.click(within(result).getByText("بستن"));
+  render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "ثبت تسویهٔ کل سفارش" }));
+  expect((await screen.findByText(/کل مانده:/)).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
+  fireEvent.click(screen.getByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" }));
+  await waitFor(() => expect(mocks.api.mock.calls.some(([path]) => path.endsWith("/15/settle"))).toBe(true));
+  const receipt = mocks.api.mock.calls.find(([path]) => path.endsWith("/15/settle"))!;
+  expect(JSON.parse(receipt[1].body)).toMatchObject({ confirmedAmount: 5_000_000, currency: "IRR" });
+});
+
+it.each(["IRR", "USD"])("uses the stored currency in manual reservation amount details without converting it: %s", async currency => {
+  render(<ReservationDetailsDialog open onOpenChange={vi.fn()} reservation={{
+    id: 50, reservationNumber: "R-100000", propertyId: 10, propertyName: "اقامتگاه آزمون",
+    source: "AdminCreated", currency, status: "Pending", checkInDate: "2035-02-01", checkOutDate: "2035-02-03",
+    finalAmount: 5_000_000, remainingAmount: 5_000_000, allowedStatusTransitions: [],
+  }} />);
+  await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+  const finance = screen.getByRole("heading", { name: "مالی" }).closest("section")!;
+  expect(within(finance).getByText("مبلغ نهایی").parentElement?.textContent)
+    .toContain(`۵٬۰۰۰٬۰۰۰ ${currency === "IRR" ? "ریال" : currency}`);
+  expect(within(finance).queryByText(/تومان/)).toBeNull();
+});
 
 it("creates all selected rooms and shows every reservation and the authoritative order total", async () => {
   const refresh = vi.fn();

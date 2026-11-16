@@ -177,6 +177,21 @@ describe("reservation list currency context", () => {
     ).toBeTruthy();
   });
 
+  it("keeps Admin manual amounts in their API currency, including mixed-currency rows", () => {
+    render(<ReservationTable context="admin" currentPage={1} loading={false}
+      onPageChange={vi.fn()} onView={mocks.onView} totalPages={1} reservations={[
+        { ...reservation, source: "AdminCreated", currency: "IRR", finalAmount: 5_000_000, remainingAmount: 5_000_000 },
+        { ...reservation, reservationId: 18, source: "AdminCreated", currency: "USD", finalAmount: 100, remainingAmount: 100 },
+        { ...reservation, reservationId: 19, source: "Website" },
+      ]} />);
+    expect(screen.getByRole("columnheader", { name: "مبلغ کل" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "مبلغ کل (تومان)" })).toBeNull();
+    expect(screen.getAllByText("۵٬۰۰۰٬۰۰۰ ریال")).toHaveLength(2);
+    expect(screen.getAllByText("۱۰۰ USD")).toHaveLength(2);
+    expect(screen.getByText("۱٬۲۵۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(screen.getByText("۵۰۰٬۰۰۰ تومان")).toBeTruthy();
+  });
+
   it("shows the configured unit in Account reservations without changing amounts", async () => {
     mocks.currencyLabel = "ریال آزمایشی";
     const fetchMock = vi.fn();

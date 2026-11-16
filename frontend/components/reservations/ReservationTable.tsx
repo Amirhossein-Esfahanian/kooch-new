@@ -291,6 +291,7 @@ export function ReservationTable({
 }: ReservationTableProps) {
   const currencyLabel = useSiteCurrencyLabel();
   const showProperty = context === "admin";
+  const showRowCurrency = showProperty && reservations.some(item => item.source === "AdminCreated" && item.currency);
   const colSpan = showProperty ? 10 : 9;
   const hasPrevious = currentPage > 1;
   const hasNext = totalPages > currentPage;
@@ -307,8 +308,8 @@ export function ReservationTable({
             <KoochTableHead>ورود</KoochTableHead>
             <KoochTableHead>خروج</KoochTableHead>
             <KoochTableHead>وضعیت</KoochTableHead>
-            <KoochTableHead>مبلغ کل ({currencyLabel})</KoochTableHead>
-            <KoochTableHead>باقی‌مانده ({currencyLabel})</KoochTableHead>
+            <KoochTableHead>{showRowCurrency ? "مبلغ کل" : `مبلغ کل (${currencyLabel})`}</KoochTableHead>
+            <KoochTableHead>{showRowCurrency ? "باقی‌مانده" : `باقی‌مانده (${currencyLabel})`}</KoochTableHead>
             <KoochTableHead>عملیات</KoochTableHead>
           </KoochTableRow>
         </KoochTableHeader>
@@ -328,6 +329,9 @@ export function ReservationTable({
                 reservation.roomTypeName ?? reservation.roomName ?? "-";
               const totalPrice =
                 reservation.finalAmount ?? reservation.totalPrice ?? null;
+              const rowCurrencyLabel = showRowCurrency && reservation.source === "AdminCreated" && reservation.currency
+                ? reservation.currency === "IRR" ? "ریال" : reservation.currency
+                : currencyLabel;
               return (
                 <KoochTableRow key={rowKey(reservation)}>
                   <KoochTableCell className="font-semibold text-xs">
@@ -371,12 +375,12 @@ export function ReservationTable({
                     )}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
-                    {toPersianDigits(formatCurrency(totalPrice, { showCurrency: false }))}
+                    {toPersianDigits(formatCurrency(totalPrice, { showCurrency: showRowCurrency, currencyLabel: rowCurrencyLabel }))}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
                     {toPersianDigits(
                       formatCurrency(reservation.remainingAmount, {
-                        showCurrency: false,
+                        showCurrency: showRowCurrency, currencyLabel: rowCurrencyLabel,
                       }),
                     )}
                   </KoochTableCell>

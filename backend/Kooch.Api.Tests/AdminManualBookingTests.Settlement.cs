@@ -8,6 +8,75 @@ namespace Kooch.Api.Tests;
 
 public sealed partial class AdminManualBookingTests
 {
+    [Theory]
+    [InlineData("pendingApproval", "ابتدا رزرو را تأیید کنید")]
+    [InlineData("pending", "در وضعیت «در انتظار»")]
+    [InlineData("missingDeadline", "مهلت پرداخت ثبت نشده")]
+    [InlineData("expiredDeadline", "پایان یافته")]
+    [InlineData("cancelled", "لغو شده")]
+    [InlineData("rejected", "در وضعیت قابل پرداخت نیست")]
+    [InlineData("deleted", "حذف شده")]
+    [InlineData("partialPayment", "پرداخت جزئی قبلی")]
+    [InlineData("paidTimestamp", "وضعیت مالی")]
+    public async Task FullSettlement_BalanceExplainsSpecificBlockerAndWriteStillRejects(string failure, string expected)
+    {
+        await using var h = await Setup();
+        var order = await ApprovedOrder(h);
+        var room = await h.DbContext.Reservations.OrderBy(r => r.Id).FirstAsync();
+        if (failure is "pending" or "pendingApproval")
+        {
+            room.Status = failure == "pending" ? ReservationStatus.Pending : ReservationStatus.PendingApproval;
+            room.PaymentExpiresAtUtc = null;
+        }
+        if (failure == "missingDeadline") room.PaymentExpiresAtUtc = null;
+        if (failure == "expiredDeadline") room.PaymentExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        if (failure == "cancelled") room.Status = ReservationStatus.Cancelled;
+        if (failure == "rejected") room.Status = ReservationStatus.Rejected;
+        if (failure == "deleted") room.IsDeleted = true;
+        if (failure == "paidTimestamp") room.PaidAtUtc = DateTime.UtcNow;
+        if (failure == "partialPayment") h.DbContext.Payments.Add(new()
+        {
+            ReservationId = room.Id, Channel = PaymentChannel.Manual, Amount = 100,
+            Currency = "IRR", Status = PaymentStatus.Successful, PaidAtUtc = DateTime.UtcNow
+        });
+        await h.DbContext.SaveChangesAsync();
+        var count = await h.DbContext.Payments.CountAsync();
+        var service = Settlements(h);
+        var balance = await service.GetOrderBalanceAsync(order, 1);
+        Assert.False(balance.CanSettle);
+        Assert.Contains(expected, balance.UnavailableReason);
+        Assert.Contains(room.ReservationNumber!, balance.UnavailableReason);
+        if (failure is "pending" or "pendingApproval") Assert.DoesNotContain("مهلت", balance.UnavailableReason);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.SettleOrderAsync(order, SettlementRequest(balance.RemainingAmount), 1));
+        Assert.Equal(balance.UnavailableReason, error.Message);
+        Assert.Equal(count, await h.DbContext.Payments.CountAsync());
+        Assert.Empty(await h.DbContext.PaymentItems.ToListAsync());
+        Assert.Empty(await h.DbContext.ReservationFinancialSnapshots.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FullSettlement_RemainsBlockedUntilEachRoomHasBeenApprovedWithItsOwnDeadline()
+    {
+        await using var h = await Setup();
+        var order = await h.Service.CreateAsync(Request(h, 3), h.SuperAdmin);
+        var service = Settlements(h);
+        Assert.False((await service.GetOrderBalanceAsync(order.BookingSessionId, 1)).CanSettle);
+        for (var index = 0; index < order.Reservations.Count; index++)
+        {
+            await h.Service.ApproveAsync(order.Reservations[index].Id, h.SuperAdmin);
+            var balance = await service.GetOrderBalanceAsync(order.BookingSessionId, 1);
+            Assert.Equal(index == order.Reservations.Count - 1, balance.CanSettle);
+            Assert.Equal(600m, balance.RemainingAmount);
+        }
+        Assert.All(await h.DbContext.Reservations.ToListAsync(), room =>
+        {
+            Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, room.Status);
+            Assert.True(room.PaymentExpiresAtUtc > DateTime.UtcNow);
+        });
+        Assert.Empty(await h.DbContext.Payments.ToListAsync());
+    }
+
     [Fact]
     public async Task FullSettlement_RecordsOneReceiptWithTraceableAllocationsAndIdempotentReplay()
     {
