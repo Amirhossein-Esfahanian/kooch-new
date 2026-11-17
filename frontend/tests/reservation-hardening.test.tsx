@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildReservationMutationPayload,
@@ -38,6 +38,71 @@ function reservation(
 }
 
 describe("reservation hardening", () => {
+  it.each([400, 160])("reveals cancellation inside a %ipx dialog body, focuses its reason and restores the trigger on dismissal", async height => {
+    const onCancel = vi.fn();
+    render(<ReservationDetailsDialog onCancel={onCancel} onOpenChange={vi.fn()} open
+      reservation={reservation({ status: "Pending", allowedStatusTransitions: ["Cancelled"] })} />);
+    const dialog = await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    const body = dialog.querySelector<HTMLElement>('[data-slot="dialog-body"]')!;
+    body.scrollTop = 600;
+    const pageScroll = document.documentElement.scrollTop;
+    vi.spyOn(body, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 500, height));
+    fireEvent.click(within(dialog).getByRole("button", { name: "لغو رزرو" }));
+    const reason = within(dialog).getByLabelText(/دلیل لغو/) as HTMLSelectElement;
+    const form = reason.closest('[role="alert"]')!.parentElement!;
+    vi.spyOn(form, "getBoundingClientRect").mockReturnValue(new DOMRect(0, -480, 500, 600));
+    vi.spyOn(reason, "getBoundingClientRect").mockReturnValue(new DOMRect(0, -290, 200, 40));
+    const focus = vi.spyOn(reason, "focus");
+    await waitFor(() => expect(document.activeElement).toBe(reason));
+    expect(body.scrollTop).toBe(height === 400 ? 20 : 106);
+    expect(document.documentElement.scrollTop).toBe(pageScroll);
+    expect(focus).toHaveBeenCalledWith({ preventScroll: true });
+    fireEvent.change(reason, { target: { value: "GuestRequest" } });
+    fireEvent.change(within(dialog).getByLabelText(/توضیحات لغو/), { target: { value: "درخواست مهمان" } });
+    expect(focus).toHaveBeenCalledTimes(1);
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    const trigger = within(dialog).getByRole("button", { name: "لغو رزرو" });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(screen.queryByLabelText(/دلیل لغو/)).toBeNull();
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(document.documentElement.scrollTop).toBe(pageScroll);
+  });
+
+  it("also restores the pending-request cancellation trigger without acting on the reservation", async () => {
+    const onCancel = vi.fn();
+    render(<ReservationDetailsDialog onCancel={onCancel} onOpenChange={vi.fn()} open
+      reservation={reservation({ allowedStatusTransitions: ["Cancelled"], cancellationRequest: {
+        status: "Pending", reason: "GuestRequest", requestedAtUtc: "2026-11-16T10:00:00Z",
+        guestMessage: null, resolvedAtUtc: null, resolutionNote: null,
+      } })} />);
+    const trigger = await screen.findByRole("button", { name: "بررسی و انجام لغو" });
+    fireEvent.click(trigger);
+    const reason = screen.getByLabelText(/دلیل لغو/);
+    await waitFor(() => expect(document.activeElement).toBe(reason));
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it.each(["Cancelled", "Confirmed", "Pending", "Completed"])("offers order settlement based only on the current %s room context", async status => {
+    render(<ReservationDetailsDialog onOpenChange={vi.fn()} onOrderSettled={vi.fn()} open
+      reservation={reservation({ source: "AdminCreated", bookingSessionId: 7, status })} />);
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    expect(Boolean(screen.queryByRole("button", { name: "ثبت تسویهٔ کل سفارش" }))).toBe(status !== "Cancelled");
+  });
+
+  it("retains settlement access from a non-cancelled sibling in the same manual order", async () => {
+    const props = { onOpenChange: vi.fn(), onOrderSettled: vi.fn(), open: true };
+    const cancelled = reservation({ source: "AdminCreated", bookingSessionId: 7, status: "Cancelled" });
+    const { rerender } = render(<ReservationDetailsDialog {...props} reservation={cancelled} />);
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    expect(screen.queryByRole("button", { name: "ثبت تسویهٔ کل سفارش" })).toBeNull();
+    rerender(<ReservationDetailsDialog {...props} reservation={{ ...cancelled, id: 2, reservationNumber: "R-SIBLING", status: "Confirmed" }} />);
+    expect(screen.getByRole("button", { name: "ثبت تسویهٔ کل سفارش" })).toBeTruthy();
+    rerender(<ReservationDetailsDialog {...props} reservation={cancelled} />);
+    expect(screen.queryByRole("button", { name: "ثبت تسویهٔ کل سفارش" })).toBeNull();
+  });
+
   it("does not infer a standard rate from a list item before details load", async () => {
     render(<ReservationDetailsDialog onOpenChange={vi.fn()} open
       reservation={reservation()} />);

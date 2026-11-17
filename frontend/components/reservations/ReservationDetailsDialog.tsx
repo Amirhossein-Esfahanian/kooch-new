@@ -1628,6 +1628,8 @@ export function ReservationDetailsDialog({
             : []),
         ];
   const [cancellationOpen, setCancellationOpen] = useState(false);
+  const cancellationFormRef = useRef<HTMLDivElement>(null);
+  const cancellationTriggerRef = useRef<HTMLButtonElement>(null);
   const [supportRequestOpen, setSupportRequestOpen] = useState(false);
   const [rejectRequestOpen, setRejectRequestOpen] = useState(false);
   const [rejectRequestNote, setRejectRequestNote] = useState("");
@@ -1654,6 +1656,33 @@ export function ReservationDetailsDialog({
     reservation.status === "ApprovedAwaitingPayment" &&
     !reservation.isPaymentExpired &&
     isUnpaidReservation(reservation);
+
+  useEffect(() => {
+    if (!open || !cancellationOpen || !canCancel) return;
+    const frame = window.requestAnimationFrame(() => {
+      const form = cancellationFormRef.current;
+      const body = form?.closest<HTMLElement>('[data-slot="dialog-body"]');
+      const reason = form?.querySelector<HTMLSelectElement>("select");
+      if (!form || !body || !reason) return;
+      const bodyBounds = body.getBoundingClientRect();
+      const formBounds = form.getBoundingClientRect();
+      body.scrollTop = Math.max(0, body.scrollTop + Math.max(
+        formBounds.top - bodyBounds.top,
+        reason.getBoundingClientRect().bottom - bodyBounds.bottom + 16,
+      ));
+      reason.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, cancellationOpen, canCancel]);
+
+  function closeCancellation() {
+    setCancellationOpen(false);
+    window.requestAnimationFrame(() => {
+      if (open && cancellationTriggerRef.current?.isConnected) {
+        cancellationTriggerRef.current.focus({ preventScroll: true });
+      }
+    });
+  }
 
   useEffect(() => {
     if (open) {
@@ -1744,7 +1773,7 @@ export function ReservationDetailsDialog({
                 ویرایش
               </KoochButton>
             )}
-            {reservation?.bookingSessionId && reservation.source === "AdminCreated" && onOrderSettled && (
+            {reservation?.bookingSessionId && reservation.source === "AdminCreated" && reservation.status !== "Cancelled" && onOrderSettled && (
               <ManualOrderSettlement key={reservation.bookingSessionId} bookingSessionId={reservation.bookingSessionId}
                 onSettled={() => onOrderSettled(reservation)} />
             )}
@@ -1803,6 +1832,7 @@ export function ReservationDetailsDialog({
                 })}
             {reservation && canCancel && !pendingCancellationRequest && !cancellationOpen && (
               <KoochButton
+                ref={cancellationTriggerRef}
                 onClick={() => setCancellationOpen(true)}
                 variant="destructive"
               >
@@ -1855,15 +1885,17 @@ export function ReservationDetailsDialog({
             )}
 
             {cancellationOpen && canCancel && (
-              <ReservationCancellationAlert
-                key={reservation.reservationNumber}
-                financial={reservation.cancellationFinancial}
-                onClose={() => setCancellationOpen(false)}
-                onConfirm={async (cancellation) => {
-                  if (onCancel) await onCancel(reservation, cancellation);
-                }}
-                reservation={reservation}
-              />
+              <div ref={cancellationFormRef}>
+                <ReservationCancellationAlert
+                  key={reservation.reservationNumber}
+                  financial={reservation.cancellationFinancial}
+                  onClose={closeCancellation}
+                  onConfirm={async (cancellation) => {
+                    if (onCancel) await onCancel(reservation, cancellation);
+                  }}
+                  reservation={reservation}
+                />
+              </div>
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3">
@@ -1935,7 +1967,7 @@ export function ReservationDetailsDialog({
                       </KoochButton>
                     )}
                     {canCancel && (
-                      <KoochButton onClick={() => setCancellationOpen(true)} variant="destructive">
+                      <KoochButton ref={cancellationTriggerRef} onClick={() => setCancellationOpen(true)} variant="destructive">
                         بررسی و انجام لغو
                       </KoochButton>
                     )}
