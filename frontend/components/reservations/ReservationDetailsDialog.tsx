@@ -12,6 +12,7 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { ManualOrderSettlement } from "./ManualOrderSettlement";
+import { ReservationDetailsSurface } from "./ReservationDetailsSurface";
 import {
   KoochCheckbox,
   KoochField,
@@ -34,6 +35,7 @@ import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 import { apiRequest } from "@/lib/owner-api";
 
 interface ReservationDetailsDialogProps {
+  presentation?: "dialog" | "page";
   showAdminActivities?: boolean;
   ownerActivityPropertyId?: number;
   canAddInternalNote?: boolean;
@@ -450,7 +452,7 @@ function isUnpaidReservation(reservation: ReservationTableItem) {
 
 function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
-    <div className="grid gap-1 rounded-md border border-border bg-background px-3 py-2">
+    <div data-reservation-item className="grid gap-1 rounded-md border border-border bg-background px-3 py-2">
       <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>
       <dd className="min-h-6 text-sm font-bold text-foreground">{value}</dd>
     </div>
@@ -469,7 +471,7 @@ function DetailSection({
   title: string;
 }) {
   return (
-    <KoochCard className="grid gap-3" padding="sm" variant="elevated">
+    <KoochCard data-reservation-section className="grid gap-3" padding="sm" variant="elevated">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-bold text-foreground">{title}</h3>
         {action}
@@ -1531,7 +1533,14 @@ function ManualPaymentRejectDialog({
   );
 }
 
+function ReservationActionGroup({ kind, children, presentation }: {
+  kind: string; children: ReactNode; presentation: "dialog" | "page";
+}) {
+  return presentation === "page" ? <div data-action-group={kind}>{children}</div> : <>{children}</>;
+}
+
 export function ReservationDetailsDialog({
+  presentation = "dialog",
   showAdminActivities = false,
   ownerActivityPropertyId,
   canAddInternalNote = false,
@@ -1663,7 +1672,13 @@ export function ReservationDetailsDialog({
       const form = cancellationFormRef.current;
       const body = form?.closest<HTMLElement>('[data-slot="dialog-body"]');
       const reason = form?.querySelector<HTMLSelectElement>("select");
-      if (!form || !body || !reason) return;
+      if (!form || !reason) return;
+      if (presentation === "page") {
+        reason.scrollIntoView({ block: "center", behavior: "instant" });
+        reason.focus({ preventScroll: true });
+        return;
+      }
+      if (!body) return;
       const bodyBounds = body.getBoundingClientRect();
       const formBounds = form.getBoundingClientRect();
       body.scrollTop = Math.max(0, body.scrollTop + Math.max(
@@ -1673,12 +1688,13 @@ export function ReservationDetailsDialog({
       reason.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [open, cancellationOpen, canCancel]);
+  }, [open, cancellationOpen, canCancel, presentation]);
 
   function closeCancellation() {
     setCancellationOpen(false);
     window.requestAnimationFrame(() => {
       if (open && cancellationTriggerRef.current?.isConnected) {
+        if (presentation === "page") cancellationTriggerRef.current.scrollIntoView?.({ block: "nearest", behavior: "instant" });
         cancellationTriggerRef.current.focus({ preventScroll: true });
       }
     });
@@ -1743,12 +1759,23 @@ export function ReservationDetailsDialog({
     shouldShowPaymentCountdown,
   ]);
 
+  const primaryStatus = !isReadOnly && onStatusChange
+    ? statusActions.find(status => ["ApprovedAwaitingPayment", "Confirmed", "Completed"].includes(status)) : undefined;
+  const primaryPaymentLink = !primaryStatus && Boolean(onSendPaymentLink) && canSendPaymentLink;
+
   return (
     <>
-      <KoochDialog
+      <ReservationDetailsSurface
+        presentation={presentation}
+        pageHeader={reservation ? <>
+          <div className="grid min-w-0 gap-2"><h1>رزرو <bdi>{toPersianDigits(reservation.reservationNumber)}</bdi></h1>
+            <p className="text-sm text-muted-foreground">{reservation.propertyName || "-"} · ورود {formatDate(reservation.checkInDate)} · خروج {formatDate(reservation.checkOutDate)}</p></div>
+          <KoochBadge variant={statusVariant(reservation.status)}>{statusLabels[reservation.status] ?? reservation.status}</KoochBadge>
+        </> : <h1>جزئیات رزرو</h1>}
         description={reservation?.reservationNumber ?? undefined}
         footer={
           <>
+            <ReservationActionGroup kind="routine" presentation={presentation}>
             {reservation && onAssignTask && (
               <KoochButton variant="outline" onClick={() => onAssignTask(reservation)}>
                 ارجاع کار
@@ -1788,7 +1815,7 @@ export function ReservationDetailsDialog({
                   onConfirm={() => onSendPaymentLink(reservation)}
                   title="ارسال لینک پرداخت"
                   trigger={
-                    <KoochButton variant="outline">
+                    <KoochButton variant={presentation === "page" && primaryPaymentLink ? "primary" : "outline"}>
                       ارسال لینک پرداخت
                     </KoochButton>
                   }
@@ -1818,7 +1845,7 @@ export function ReservationDetailsDialog({
                       trigger={
                         <KoochButton
                           variant={
-                            text.variant === "destructive"
+                            presentation === "page" && nextStatus === primaryStatus ? "primary" : text.variant === "destructive"
                               ? "destructive"
                               : "outline"
                           }
@@ -1830,6 +1857,8 @@ export function ReservationDetailsDialog({
                     />
                   );
                 })}
+            </ReservationActionGroup>
+            <ReservationActionGroup kind="cancellation" presentation={presentation}>
             {reservation && canCancel && !pendingCancellationRequest && !cancellationOpen && (
               <KoochButton
                 ref={cancellationTriggerRef}
@@ -1849,7 +1878,8 @@ export function ReservationDetailsDialog({
                 ثبت بازپرداخت
               </KoochButton>
             )}
-            <KoochButton
+            </ReservationActionGroup>
+            {presentation === "dialog" && <KoochButton
               onClick={() => {
                 setCancellationOpen(false);
                 setPriceAdjustmentOpen(false);
@@ -1858,7 +1888,7 @@ export function ReservationDetailsDialog({
               variant="outline"
             >
               بستن
-            </KoochButton>
+            </KoochButton>}
           </>
         }
         onOpenChange={(nextOpen) => {
@@ -1898,7 +1928,7 @@ export function ReservationDetailsDialog({
               </div>
             )}
 
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3">
+            {presentation === "dialog" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3">
               <div>
                 <p className="text-xs font-semibold text-muted-foreground">
                   وضعیت فعلی رزرو
@@ -1912,6 +1942,7 @@ export function ReservationDetailsDialog({
               </KoochBadge>
             </div>
 
+            }
             {reservation.cancellationRequest && (
               <KoochCard className="grid gap-3" padding="sm" variant="muted" aria-label="درخواست لغو مهمان">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2138,7 +2169,7 @@ export function ReservationDetailsDialog({
                   />
                 ) : null
               }
-              title="مالی"
+              title={presentation === "page" ? "مبالغ این رزرو" : "مالی"}
             >
               <DetailItem
                 label="قیمت پایه"
@@ -2353,7 +2384,7 @@ export function ReservationDetailsDialog({
             رزروی برای نمایش انتخاب نشده است.
           </p>
         )}
-      </KoochDialog>
+      </ReservationDetailsSurface>
 
       {reservation && onCreateCancellationRequest && (
         <SupportCancellationRequestDialog

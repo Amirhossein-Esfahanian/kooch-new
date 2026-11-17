@@ -55,6 +55,25 @@ const reservation: ReservationTableItem = {
 };
 
 describe("reservation list currency context", () => {
+  it("shows one details link and an authoritative order label unchanged across list pages", () => {
+    const item = { ...reservation, bookingSessionId: 8, bookingSessionCode: "B-ROOMS", linkedReservationCount: 3 };
+    const props = { context: "admin" as const, currentPage: 1, loading: false, onPageChange: vi.fn(), onView: mocks.onView, totalPages: 3,
+      detailsHref: (row: ReservationTableItem) => `/admin/reservations/${row.reservationId}` };
+    const { rerender } = render(<ReservationTable {...props} reservations={[item]} />);
+    expect(screen.getByRole("link", { name: /KCH-/ }).getAttribute("href")).toBe("/admin/reservations/17");
+    expect(screen.getByText((_, node) => node?.tagName === "P" && node.textContent === "سفارش B-ROOMS · ۳ رزرو مرتبط")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "مشاهده رزرو" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "عملیات" })).toBeNull();
+    rerender(<ReservationTable {...props} currentPage={2} reservations={[{ ...item, reservationId: 18, reservationNumber: "KCH-18" }]} />);
+    expect(screen.getByText((_, node) => node?.tagName === "P" && node.textContent === "سفارش B-ROOMS · ۳ رزرو مرتبط")).toBeTruthy();
+  });
+
+  it.each([undefined, 0, 1])("does not invent an order label for a standalone/single or unknown count %s", count => {
+    render(<ReservationTable context="admin" currentPage={1} loading={false} onPageChange={vi.fn()} onView={vi.fn()}
+      totalPages={1} reservations={[{ ...reservation, bookingSessionCode: "B-SINGLE", linkedReservationCount: count }]} />);
+    expect(screen.queryByText(/رزرو مرتبط/)).toBeNull();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.currencyLabel = "تومان";

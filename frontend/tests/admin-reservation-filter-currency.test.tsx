@@ -4,7 +4,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
   currencyLabel: "تومان",
+  router: { push: vi.fn(), replace: vi.fn() },
 }));
+
+vi.mock("next/navigation", () => ({ useRouter: () => mocks.router, useSearchParams: () => new URLSearchParams() }));
 
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children }: { children: React.ReactNode }) => children,

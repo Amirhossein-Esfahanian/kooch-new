@@ -63,7 +63,7 @@ public class ReservationService(
         }
 
         return await SearchInternalAsync(query, null, null, allowedPropertyIds, cancellationToken,
-            includePendingCancellationRequest: true);
+            includePendingCancellationRequest: true, includeOrderSummary: true);
     }
 
     public async Task<PagedResult<ReservationListItemResponse>> SearchByPropertyAsync(
@@ -2233,7 +2233,8 @@ public class ReservationService(
         int? scopedUserId,
         IReadOnlyCollection<int>? allowedPropertyIds,
         CancellationToken cancellationToken,
-        bool includePendingCancellationRequest = false)
+        bool includePendingCancellationRequest = false,
+        bool includeOrderSummary = false)
     {
         await ExpireApprovedUnpaidReservationsAsync(100, cancellationToken);
         var page = Math.Max(1, query.Page);
@@ -2303,6 +2304,28 @@ public class ReservationService(
                 PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc
             })
             .ToListAsync(cancellationToken);
+
+        if (includeOrderSummary)
+        {
+            var sessionIds = rows.Where(row => row.BookingSessionId.HasValue)
+                .Select(row => row.BookingSessionId!.Value).Distinct().ToArray();
+            var sessions = dbContext.BookingSessions.AsNoTracking().Where(session => sessionIds.Contains(session.Id));
+            // Do not reveal even a membership count when an order contains rooms outside the actor's scope.
+            if (allowedPropertyIds is not null)
+                sessions = sessions.Where(session => allowedPropertyIds.Contains(session.PropertyId) && !session.Reservations.Any(reservation =>
+                    !allowedPropertyIds.Contains(reservation.PropertyId)));
+            var summaries = await sessions.Select(session => new
+                { session.Id, session.SessionCode, Count = session.Reservations.Count() })
+                .ToDictionaryAsync(session => session.Id, cancellationToken);
+            foreach (var row in rows)
+            {
+                if (row.BookingSessionId is { } sessionId && summaries.TryGetValue(sessionId, out var summary))
+                {
+                    row.BookingSessionCode = summary.SessionCode;
+                    row.LinkedReservationCount = summary.Count;
+                }
+            }
+        }
 
         var now = DateTime.UtcNow;
         return new PagedResult<ReservationListItemResponse>
@@ -2604,6 +2627,8 @@ public class ReservationService(
         return new ReservationListItemResponse
         {
             BookingSessionId = row.BookingSessionId,
+            BookingSessionCode = row.BookingSessionCode,
+            LinkedReservationCount = row.LinkedReservationCount,
             ReservationId = row.Id,
             Id = row.Id,
             ReservationNumber = row.ReservationNumber ?? string.Empty,
@@ -3056,6 +3081,8 @@ public class ReservationService(
     private sealed class ReservationListProjection
     {
         public int? BookingSessionId { get; set; }
+        public string? BookingSessionCode { get; set; }
+        public int? LinkedReservationCount { get; set; }
         public int Id { get; set; }
         public string? ReservationNumber { get; set; }
         public int PropertyId { get; set; }

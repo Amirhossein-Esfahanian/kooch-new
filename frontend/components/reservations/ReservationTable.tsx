@@ -1,5 +1,6 @@
 ﻿"use client";
 
+import Link from "next/link";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
@@ -129,6 +130,8 @@ export interface ReservationTimelineEvent {
 
 export interface ReservationTableItem {
   bookingSessionId?: number | null;
+  bookingSessionCode?: string | null;
+  linkedReservationCount?: number | null;
   id?: number;
   reservationId?: number;
   reservationNumber: string;
@@ -208,6 +211,7 @@ export interface ReservationTableItem {
 }
 
 interface ReservationTableProps {
+  detailsHref?: (reservation: ReservationTableItem) => string;
   reservations: ReservationTableItem[];
   loading: boolean;
   onView: (reservation: ReservationTableItem) => void;
@@ -287,12 +291,13 @@ export function ReservationTable({
   currentPage,
   totalPages,
   context,
+  detailsHref,
   emptyMessage = "رزروی برای نمایش وجود ندارد.",
 }: ReservationTableProps) {
   const currencyLabel = useSiteCurrencyLabel();
   const showProperty = context === "admin";
   const showRowCurrency = showProperty && reservations.some(item => item.source === "AdminCreated" && item.currency);
-  const colSpan = showProperty ? 10 : 9;
+  const colSpan = (showProperty ? 10 : 9) - (detailsHref ? 1 : 0);
   const hasPrevious = currentPage > 1;
   const hasNext = totalPages > currentPage;
 
@@ -310,7 +315,7 @@ export function ReservationTable({
             <KoochTableHead>وضعیت</KoochTableHead>
             <KoochTableHead>{showRowCurrency ? "مبلغ کل" : `مبلغ کل (${currencyLabel})`}</KoochTableHead>
             <KoochTableHead>{showRowCurrency ? "باقی‌مانده" : `باقی‌مانده (${currencyLabel})`}</KoochTableHead>
-            <KoochTableHead>عملیات</KoochTableHead>
+            {!detailsHref && <KoochTableHead>عملیات</KoochTableHead>}
           </KoochTableRow>
         </KoochTableHeader>
 
@@ -335,7 +340,11 @@ export function ReservationTable({
               return (
                 <KoochTableRow key={rowKey(reservation)}>
                   <KoochTableCell className="font-semibold text-xs">
-                    {toPersianDigits(reservation.reservationNumber || "-")}
+                    {detailsHref ? <Link href={detailsHref(reservation)} className="rounded text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                      {toPersianDigits(reservation.reservationNumber || "-")}
+                    </Link> : toPersianDigits(reservation.reservationNumber || "-")}
+                    {showProperty && reservation.bookingSessionCode && (reservation.linkedReservationCount ?? 0) > 1 &&
+                      <p className="mt-1 text-xs font-normal text-muted-foreground">سفارش <bdi>{toPersianDigits(reservation.bookingSessionCode)}</bdi> · {toPersianDigits(reservation.linkedReservationCount!)} رزرو مرتبط</p>}
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="grid gap-1">
@@ -384,7 +393,7 @@ export function ReservationTable({
                       }),
                     )}
                   </KoochTableCell>
-                  <KoochTableCell>
+                  {!detailsHref && <KoochTableCell>
                     <KoochButton
                       onClick={() => onView(reservation)}
                       size="sm"
@@ -392,7 +401,7 @@ export function ReservationTable({
                     >
                       مشاهده رزرو
                     </KoochButton>
-                  </KoochTableCell>
+                  </KoochTableCell>}
                 </KoochTableRow>
               );
             })

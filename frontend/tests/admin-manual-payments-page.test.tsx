@@ -90,7 +90,8 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn(), warning: mocks.toastWarning },
 }));
 
-import AdminReservationsPage from "@/app/admin/reservations/page";
+import { AdminReservationsWorkspace } from "@/components/reservations/AdminReservationsWorkspace";
+function AdminReservationsPage() { return <AdminReservationsWorkspace reservationId={12} />; }
 import { ApiRequestError } from "@/lib/owner-api";
 
 const reservationDetails = {
@@ -145,7 +146,7 @@ describe("Admin manual payment page integration", () => {
 
   it("loads manual payments with reservation details for ManagePayments actors", async () => {
     render(<AdminReservationsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو آزمون" }));
+    await waitFor(() => expect(mocks.dialogProps?.reservation).toEqual(reservationDetails));
 
     await screen.findByText("پرداخت‌ها: 1");
     expect(mocks.apiRequest).toHaveBeenCalledWith("/admin/manual-payments/reservation/12");
@@ -157,7 +158,7 @@ describe("Admin manual payment page integration", () => {
 
   it("posts the create payload without evidence and refreshes the current reservation", async () => {
     render(<AdminReservationsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو آزمون" }));
+    await waitFor(() => expect(mocks.dialogProps?.reservation).toEqual(reservationDetails));
     fireEvent.click(await screen.findByRole("button", { name: "ثبت آزمایشی" }));
 
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
@@ -175,7 +176,7 @@ describe("Admin manual payment page integration", () => {
 
   it("uses the existing approve and reject endpoints and refreshes after each mutation", async () => {
     render(<AdminReservationsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو آزمون" }));
+    await waitFor(() => expect(mocks.dialogProps?.reservation).toEqual(reservationDetails));
     fireEvent.click(await screen.findByRole("button", { name: "تأیید آزمایشی" }));
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith(
       "/admin/manual-payments/41/approve",
@@ -191,7 +192,7 @@ describe("Admin manual payment page integration", () => {
   it("does not fetch or expose manual-payment actions without ManagePayments", async () => {
     mocks.permissions = ["ManageReservations"];
     render(<AdminReservationsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو آزمون" }));
+    await waitFor(() => expect(mocks.dialogProps?.reservation).toEqual(reservationDetails));
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith("/admin/reservations/12"));
 
     expect(mocks.apiRequest).not.toHaveBeenCalledWith("/admin/manual-payments/reservation/12");
@@ -217,7 +218,7 @@ describe("Admin manual payment page integration", () => {
     });
 
     render(<AdminReservationsPage />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو آزمون" }));
+    await waitFor(() => expect(mocks.dialogProps?.reservation).toEqual(reservationDetails));
     await screen.findByText("پرداخت‌ها: 1");
     const initialReads = mocks.apiRequest.mock.calls.filter(
       ([path]) => path === "/admin/manual-payments/reservation/12",

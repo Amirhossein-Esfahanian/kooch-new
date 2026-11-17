@@ -17,6 +17,10 @@ public class ManualBookingCreateResponse
 public class ReservationListItemResponse
 {
     public int? BookingSessionId { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? BookingSessionCode { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? LinkedReservationCount { get; set; }
     public int ReservationId { get; set; }
     public int Id { get; set; }
     public string ReservationNumber { get; set; } = string.Empty;

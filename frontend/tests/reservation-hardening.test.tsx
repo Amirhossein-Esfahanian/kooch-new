@@ -38,6 +38,49 @@ function reservation(
 }
 
 describe("reservation hardening", () => {
+  it("reuses details on a page with one status badge, scoped primary action and working confirmation", async () => {
+    const onStatusChange = vi.fn();
+    const item = reservation();
+    const { rerender } = render(<ReservationDetailsDialog presentation="page" open reservation={item}
+      onOpenChange={vi.fn()} onStatusChange={onStatusChange} />);
+    expect(screen.getByRole("heading", { level: 1, name: /رزرو KCH-TEST/ })).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.getAllByText("در انتظار تایید", { exact: true })).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "مبالغ این رزرو" })).toBeTruthy();
+    const approve = screen.getByRole("button", { name: "آماده پرداخت" });
+    expect(approve.className).toContain("bg-primary");
+    fireEvent.click(approve);
+    await screen.findByRole("alertdialog", { name: "آماده پرداخت" });
+    rerender(<ReservationDetailsDialog presentation="page" open reservation={{ ...item, remainingAmount: 900 }}
+      onOpenChange={vi.fn()} onStatusChange={onStatusChange} />);
+    expect(screen.getByRole("alertdialog", { name: "آماده پرداخت" })).toBeTruthy();
+    expect(onStatusChange).not.toHaveBeenCalled();
+  });
+
+  it("does not highlight an action when primary eligibility is not established", () => {
+    render(<ReservationDetailsDialog presentation="page" open reservation={reservation({ allowedStatusTransitions: [] })}
+      onOpenChange={vi.fn()} onStatusChange={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "آماده پرداخت" })).toBeNull();
+  });
+
+  it("reveals cancellation on the details page and restores its initiating action without submitting", async () => {
+    const cancel = vi.fn();
+    render(<ReservationDetailsDialog presentation="page" open reservation={reservation({ status: "Confirmed", allowedStatusTransitions: ["Cancelled"] })}
+      onCancel={cancel} onOpenChange={vi.fn()} />);
+    fireEvent.click(screen.getByRole("button", { name: "لغو رزرو" }));
+    const reason = screen.getByLabelText(/دلیل لغو/);
+    const scroll = vi.fn();
+    Object.defineProperty(reason, "scrollIntoView", { value: scroll });
+    await waitFor(() => expect(document.activeElement).toBe(reason));
+    expect(scroll).toHaveBeenCalledWith({ block: "center", behavior: "instant" });
+    const restoreScroll = vi.fn();
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+    Object.defineProperty(screen.getByRole("button", { name: "لغو رزرو" }), "scrollIntoView", { value: restoreScroll });
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "لغو رزرو" })));
+    expect(restoreScroll).toHaveBeenCalledWith({ block: "nearest", behavior: "instant" });
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
   it.each([400, 160])("reveals cancellation inside a %ipx dialog body, focuses its reason and restores the trigger on dismissal", async height => {
     const onCancel = vi.fn();
     render(<ReservationDetailsDialog onCancel={onCancel} onOpenChange={vi.fn()} open
