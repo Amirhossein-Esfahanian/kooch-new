@@ -1,0 +1,52 @@
+import { useState } from "react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { expect, it } from "vitest";
+import { GuestCountControls } from "@/components/GuestCountControls";
+import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
+
+function AdminCounts() {
+  const [adults, setAdults] = useState(1);
+  const [ages, setAges] = useState<string[]>([]);
+  return <GuestCountControls compact requireChildAges adults={adults} maxAdults={2} maxChildren={2}
+    childrenCount={ages.length} childAges={ages} onAdultsChange={setAdults}
+    onChildrenChange={count => setAges(current => Array.from({ length: count }, (_, index) => current[index] ?? ""))}
+    onChildAgeChange={(index, age) => setAges(current => current.map((value, i) => i === index ? age : value))} />;
+}
+
+it("uses bounded non-submit counters and explicit child ages, preserving siblings on removal", () => {
+  render(<AdminCounts />);
+  expect((screen.getByRole("button", { name: "کاهش بزرگسال" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسال" }));
+  expect((screen.getByRole("button", { name: "افزایش بزرگسال" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
+  const first = screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement;
+  expect(first.value).toBe(""); expect(first.required).toBe(true);
+  expect(first.getAttribute("aria-invalid")).toBe("true");
+  fireEvent.change(first, { target: { value: "0" } });
+  expect(first.value).toBe("0"); expect(first.getAttribute("aria-invalid")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
+  expect((screen.getByRole("button", { name: "افزایش کودک" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۲" }), { target: { value: "17" } });
+  fireEvent.click(screen.getByRole("button", { name: "کاهش کودک" }));
+  expect(first.value).toBe("0"); expect(screen.queryByRole("combobox", { name: "سن کودک ۲" })).toBeNull();
+  expect(screen.getAllByRole("button").every(button => button.getAttribute("type") === "button")).toBe(true);
+});
+
+it("retains search defaults, room count, clear bounds, Escape and focus restoration", () => {
+  function SearchCounts() {
+    const [value, setValue] = useState<GuestSelectorValue>({ rooms: 1, adults: 2, children: 0, childAges: [] });
+    return <GuestSelector value={value} onChange={setValue} />;
+  }
+  render(<SearchCounts />);
+  const trigger = screen.getByRole("button", { name: /^مسافران/ });
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد اتاق" }));
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
+  const age = screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement;
+  expect(age.value).toBe("5"); expect(age.required).toBe(false);
+  fireEvent.change(age, { target: { value: "9" } });
+  expect(age.value).toBe("9");
+  expect(trigger.textContent).toContain("۲ اتاق");
+  fireEvent.keyDown(age, { key: "Escape" });
+  expect(screen.queryByRole("combobox")).toBeNull(); expect(document.activeElement).toBe(trigger);
+});

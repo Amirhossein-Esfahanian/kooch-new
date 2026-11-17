@@ -1,5 +1,6 @@
 "use client";
 
+import { NumberedSteps } from "@/components/NumberedSteps";
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import { KoochButton } from "@/components/KoochButton";
@@ -104,13 +105,7 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
       {confirmDiscard ? <KoochAlert variant="question" title="تغییرات ذخیره‌نشده" role="alert">
         امتیازها یا متن نظر تغییر کرده‌اند. بدون ثبت از این فرم خارج می‌شوید؟
       </KoochAlert> : <>
-      <ol className={styles.steps} aria-label="مراحل ثبت نظر">
-        <li aria-current={step === 1 ? "step" : undefined} data-state={step === 1 ? "active" : "completed"}>
-          <span className={styles.stepNumber} aria-hidden="true">{step === 1 ? "۱" : <svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
-          امتیازدهی{step === 2 && <span className="sr-only"> (تکمیل‌شده)</span>}
-        </li>
-        <li aria-current={step === 2 ? "step" : undefined} data-state={step === 2 ? "active" : "upcoming"}><span className={styles.stepNumber} aria-hidden="true">۲</span>بررسی و ثبت</li>
-      </ol>
+      <NumberedSteps label="مراحل ثبت نظر" currentStep={step} labels={["امتیازدهی", "بررسی و ثبت"]} />
       <h3 className={styles.stepTitle} tabIndex={-1} ref={heading}>{step === 1 ? "امتیازدهی" : "بررسی و ثبت"}</h3>
       {loading ? <p className="py-6" role="status">در حال دریافت نظر…</p> : (
         <form id={formId} ref={form} className="mt-3 grid gap-3" onSubmit={event => { event.preventDefault(); event.stopPropagation(); }} noValidate aria-busy={busy}>

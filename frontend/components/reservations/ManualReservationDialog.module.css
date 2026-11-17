@@ -1,0 +1,7 @@
+.wizard.wizard { height: auto; max-height: calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
+.body.body { padding: 1rem; overscroll-behavior: contain; }
+.footer.footer { padding: 0.75rem 1rem; }
+@media (max-width: 639px) {
+  .wizard.wizard { width: calc(100vw - 1rem); }
+  .body.body { padding: 0.75rem; }
+}

@@ -6,6 +6,7 @@ import {
   shouldShowDevelopmentNavigation,
 } from "@/components/Header";
 import { KoochCompactDateRangePicker } from "@/components/KoochCompactDateRangePicker";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 import {
   SharedDateRangePicker,
   type SharedDateRangeValue,
@@ -86,6 +87,23 @@ function ControlledPicker({
 }
 
 describe("KoochCompactDateRangePicker", () => {
+  it("keeps Admin compact dates keyboard-accessible and requires explicit confirmation", async () => {
+    const onChange = vi.fn();
+    render(<KoochDatePicker mode="range" combinedField fieldSize="compact" openOnDialog
+      labels={{ start: "ورود", end: "خروج" }} value={committedRange} onChange={onChange} />);
+    const trigger = screen.getByRole("button", { name: /^ورود:/ });
+    expect(trigger.getAttribute("data-field-size")).toBe("compact");
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    await screen.findByRole("dialog");
+    fireEvent.click(findDay("2026-03-24"));
+    fireEvent.click(findDay("2026-03-26"));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "تایید" }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith({ startDate: "2026-03-24", endDate: "2026-03-26" });
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+  });
+
   it("supports separate Direct arrival/departure fields with the same immediate range confirmation", async () => {
     installHolidayFetch([]);
     const onChange = vi.fn();

@@ -198,7 +198,7 @@ export default function AdminReservationsPage() {
 }
 
 function AdminReservationsContent() {
-  const { platformPermissions, platformRole } = useAuthSession();
+  const { platformPermissions, platformRole, propertyMemberships } = useAuthSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const deepLinkQuery = searchParams.toString();
@@ -785,6 +785,12 @@ function AdminReservationsContent() {
             <ManualReservationDialog
               context="admin"
               onCreated={loadReservations}
+              canReviewCreatedReservation={propertyId => platformRole === "SuperAdmin" || Boolean(propertyMemberships?.some(membership =>
+                membership.propertyId === propertyId && membership.isActive && membership.membershipStatus === "Active" &&
+                membership.effectivePermissions.Bookings?.edit))}
+              onReviewCreatedReservation={canManageReservations ? id => {
+                void viewReservation({ id } as ReservationTableItem, true);
+              } : undefined}
             />
           }
           description="فهرست رزروهای ثبت‌شده در همه اقامتگاه‌ها"
