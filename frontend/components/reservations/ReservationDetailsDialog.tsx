@@ -68,6 +68,7 @@ interface ReservationDetailsDialogProps {
   ) => void | Promise<void>;
   onRefresh?: (reservation: ReservationTableItem) => void | Promise<void>;
   onOrderSettled?: (reservation: ReservationTableItem) => void | Promise<void>;
+  onPrepareManualPayment?: (reservation: ReservationTableItem) => Promise<void>;
   manualPayments?: AdminManualPayment[];
   manualPaymentsLoading?: boolean;
   onCreateManualPayment?: (
@@ -1560,6 +1561,7 @@ export function ReservationDetailsDialog({
   onRejectManualPayment,
   onRefresh,
   onOrderSettled,
+  onPrepareManualPayment,
   onSendPaymentLink,
   onStatusChange,
   onOpenChange,
@@ -1761,7 +1763,8 @@ export function ReservationDetailsDialog({
 
   const primaryStatus = !isReadOnly && onStatusChange
     ? statusActions.find(status => ["ApprovedAwaitingPayment", "Confirmed", "Completed"].includes(status)) : undefined;
-  const primaryPaymentLink = !primaryStatus && Boolean(onSendPaymentLink) && canSendPaymentLink;
+  const canPrepareManualPayment = !isReadOnly && reservation?.canPrepareManualPayment === true && Boolean(onPrepareManualPayment);
+  const primaryPaymentLink = !canPrepareManualPayment && !primaryStatus && Boolean(onSendPaymentLink) && canSendPaymentLink;
 
   return (
     <>
@@ -1822,6 +1825,11 @@ export function ReservationDetailsDialog({
                   variant="warning"
                 />
               )}
+            {reservation && canPrepareManualPayment && onPrepareManualPayment && <KoochConfirmDialog
+              title="آماده‌سازی برای پرداخت" confirmText="آماده‌سازی برای پرداخت" cancelText="انصراف" variant="question"
+              description="فقط این رزرو برای پرداخت آماده می‌شود، ظرفیت نگه داشته می‌شود و مهلت پرداخت آغاز می‌شود. هیچ وجهی دریافت و رزرو نهایی تأیید نمی‌شود."
+              onConfirm={() => onPrepareManualPayment(reservation)}
+              trigger={<KoochButton variant={presentation === "page" ? "primary" : "outline"}>آماده‌سازی برای پرداخت</KoochButton>} />}
             {reservation &&
               !isReadOnly &&
               onStatusChange &&

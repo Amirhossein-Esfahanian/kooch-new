@@ -185,6 +185,7 @@ export interface ReservationTableItem {
   cancellationOutcome?: ReservationCancellationOutcome | null;
   expiredAtUtc?: string | null;
   allowedStatusTransitions?: ReservationTableStatus[];
+  canPrepareManualPayment?: boolean;
   baseAmount?: number | null;
   basePrice?: number | null;
   childAmount?: number | null;

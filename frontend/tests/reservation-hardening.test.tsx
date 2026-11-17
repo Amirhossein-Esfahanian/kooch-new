@@ -38,6 +38,38 @@ function reservation(
 }
 
 describe("reservation hardening", () => {
+  it("offers manual payment preparation only from the server capability and confirms just that reservation", async () => {
+    const prepare = vi.fn().mockResolvedValue(undefined);
+    const status = vi.fn();
+    const item = reservation({ status: "Pending", source: "AdminCreated", canPrepareManualPayment: true,
+      allowedStatusTransitions: ["Cancelled"] });
+    const { rerender } = render(<ReservationDetailsDialog presentation="page" open reservation={item}
+      onOpenChange={vi.fn()} onPrepareManualPayment={prepare} onStatusChange={status} />);
+    const trigger = screen.getByRole("button", { name: "آماده‌سازی برای پرداخت" });
+    expect(trigger.className).toContain("bg-primary");
+    expect(screen.queryByRole("button", { name: "تأیید رزرو" })).toBeNull();
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("alertdialog", { name: "آماده‌سازی برای پرداخت" });
+    expect(within(dialog).getByText(/هیچ وجهی دریافت/)).toBeTruthy();
+    expect(prepare).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "آماده‌سازی برای پرداخت" }));
+    await waitFor(() => expect(prepare).toHaveBeenCalledExactlyOnceWith(item));
+    expect(status).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    rerender(<ReservationDetailsDialog presentation="page" open reservation={{ ...item,
+      canPrepareManualPayment: false, status: "ApprovedAwaitingPayment", paymentExpiresAtUtc: "2026-11-20T12:45:00Z" }}
+      onOpenChange={vi.fn()} onPrepareManualPayment={prepare} onStatusChange={status} />);
+    expect(screen.queryByRole("button", { name: "آماده‌سازی برای پرداخت" })).toBeNull();
+    expect(screen.getAllByText(/مهلت پرداخت/).length).toBeGreaterThan(0);
+  });
+
+  it.each([false, undefined])("does not infer preparation from Pending or admin origin when capability is %s", capability => {
+    render(<ReservationDetailsDialog presentation="page" open reservation={reservation({ status: "Pending",
+      source: "AdminCreated", canPrepareManualPayment: capability, allowedStatusTransitions: [] })}
+      onOpenChange={vi.fn()} onPrepareManualPayment={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "آماده‌سازی برای پرداخت" })).toBeNull();
+  });
+
   it("reuses details on a page with one status badge, scoped primary action and working confirmation", async () => {
     const onStatusChange = vi.fn();
     const item = reservation();

@@ -63,6 +63,12 @@ public interface IReservationService
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default);
 
+    Task<ReservationResponse> PrepareManualPaymentAsync(int reservationId,
+        (int UserId, UserRole Role) currentUser, CancellationToken cancellationToken = default);
+
+    Task ApplyAdminManualPaymentActionsAsync(ReservationResponse response,
+        (int UserId, UserRole Role) currentUser, CancellationToken cancellationToken = default);
+
     Task<ReservationResponse> CancelAsync(
         int reservationId,
         ReservationCancellationRequest request,

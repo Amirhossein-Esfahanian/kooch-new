@@ -37,14 +37,18 @@ vi.mock("@/components/reservations/ReservationTable", () => ({
 vi.mock("@/components/reservations/ReservationDetailsDialog", () => ({
   ReservationDetailsDialog: (props: Record<string, unknown>) => {
     mocks.detail = props;
-    const item = props.reservation as { status?: string; cancellationFinancial?: { refundPending?: boolean };
+    const item = props.reservation as { status?: string; canPrepareManualPayment?: boolean; paymentExpiresAtUtc?: string;
+      cancellationFinancial?: { refundPending?: boolean };
       cancellationRequest?: { status?: string } | null } | null;
     const cancel = props.onCancel as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
     const refund = props.onRefund as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
     const rejectRequest = props.onRejectCancellationRequest as ((item: unknown, note: string | null) => Promise<void>) | undefined;
     const createRequest = props.onCreateCancellationRequest as ((item: unknown, request: unknown) => Promise<void>) | undefined;
     const assignTask = props.onAssignTask as ((item: unknown) => void) | undefined;
+    const prepare = props.onPrepareManualPayment as ((item: unknown) => Promise<void>) | undefined;
     return <div>
+      {item?.canPrepareManualPayment && prepare && <button onClick={() => void prepare(item).catch(() => undefined)}>آماده‌سازی برای پرداخت</button>}
+      {item?.paymentExpiresAtUtc && <span>مهلت پرداخت: {item.paymentExpiresAtUtc}</span>}
       {Boolean(props.open) && item && assignTask && <button onClick={() => assignTask(item)}>ارجاع کار</button>}
       <span>Cancellation request: {item?.cancellationRequest?.status ?? "-"}</span>
       {item?.cancellationRequest?.status === "Pending" && rejectRequest &&
@@ -103,6 +107,12 @@ function installApi() {
       return Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 10, totalPages: 0 });
     if (path === "/admin/manual-payments/reservation/12") return Promise.resolve([]);
     if (path === "/admin/reservations/12") { detailReads += 1; return Promise.resolve(current); }
+    if (path === "/admin/reservations/12/prepare-payment" && init?.method === "PUT") {
+      if (mutationFailure) return Promise.reject(mutationFailure);
+      current = { ...current, status: "ApprovedAwaitingPayment", canPrepareManualPayment: false,
+        paymentExpiresAtUtc: "2026-11-20T12:45:00Z" };
+      return Promise.resolve(current);
+    }
     if (path === "/admin/reservations/12/cancellation-request/reject" && init?.method === "PUT") {
       if (mutationFailure) return Promise.reject(mutationFailure);
       if (rejectRequestPromise) return rejectRequestPromise;
@@ -148,6 +158,31 @@ describe("Admin cancellation and refund API integration", () => {
     rejectRequestPromise = null;
     createRequestFailure = null;
     installApi();
+  });
+
+  it("prepares only the selected manual reservation then refreshes its status and deadline", async () => {
+    current = { ...initial, status: "Pending", source: "AdminCreated", canPrepareManualPayment: true };
+    await openPage();
+    fireEvent.click(screen.getByRole("button", { name: "آماده‌سازی برای پرداخت" }));
+    await screen.findByText("وضعیت جزئیات: ApprovedAwaitingPayment");
+    expect(screen.getByText("مهلت پرداخت: 2026-11-20T12:45:00Z")).toBeTruthy();
+    await waitFor(() => expect(detailReads).toBe(2));
+    expect(mocks.apiRequest.mock.calls.filter(([, init]) => init?.method === "PUT"))
+      .toEqual([["/admin/reservations/12/prepare-payment", { method: "PUT" }]]);
+    expect(screen.queryByRole("button", { name: "آماده‌سازی برای پرداخت" })).toBeNull();
+    expect(mocks.toastSuccess).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Pending unchanged and surfaces the server reason when preparation fails", async () => {
+    current = { ...initial, status: "Pending", canPrepareManualPayment: true };
+    mutationFailure = new ApiRequestError("ظرفیت اقامت تغییر کرده است", 409);
+    await openPage();
+    fireEvent.click(screen.getByRole("button", { name: "آماده‌سازی برای پرداخت" }));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("ظرفیت اقامت تغییر کرده است"));
+    expect(screen.getByText("وضعیت جزئیات: Pending")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "آماده‌سازی برای پرداخت" })).toBeTruthy();
+    expect(detailReads).toBe(1);
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
   });
 
   it("returns from task Cancel to the same reloadable details and preserves the originating list", async () => {

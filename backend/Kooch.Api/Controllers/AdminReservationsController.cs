@@ -141,6 +141,14 @@ public class AdminReservationsController(
         return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
+    [HttpPut("{id:int}/prepare-payment")]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> PreparePayment(int id, CancellationToken cancellationToken)
+    {
+        var response = await reservationService.PrepareManualPaymentAsync(id, GetCurrentUser(), cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
+    }
+
     [HttpPut("{id:int}/cancel")]
     [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
@@ -227,6 +235,7 @@ public class AdminReservationsController(
                 : [];
         }
 
+        await reservationService.ApplyAdminManualPaymentActionsAsync(response, user, cancellationToken);
         return response;
     }
 

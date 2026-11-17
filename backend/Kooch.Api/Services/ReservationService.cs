@@ -12,7 +12,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class ReservationService(
+public partial class ReservationService(
     KoochDbContext dbContext,
     IReservationAvailabilityService availabilityService,
     IReservationPricingService pricingService,
@@ -1550,16 +1550,7 @@ public class ReservationService(
             reservation.Status,
             ReservationStatus.ApprovedAwaitingPayment);
 
-        var now = DateTime.UtcNow;
-        reservation.Status = ReservationStatus.ApprovedAwaitingPayment;
-        reservation.ChangedAtUtc = now;
-        reservation.ChangedByUserId = currentUser.UserId;
-        reservation.ApprovedAtUtc = now;
-        reservation.ApprovedByUserId = currentUser.UserId;
-        reservation.PaymentExpiresAtUtc = paymentDeadlineUtc ??
-            now.AddMinutes(await ReservationPaymentWindowSettings.GetMinutesAsync(
-                dbContext,
-                cancellationToken));
+        await SetReadyForPaymentAsync(reservation, currentUser, paymentDeadlineUtc, cancellationToken);
         auditLogService.Add(
             currentUser.UserId,
             AuditAction.BookingApproved,
@@ -1579,6 +1570,21 @@ public class ReservationService(
                 out var message)
             ? (eventType, string.Format(message, reservation.ReservationNumber))
             : null;
+    }
+
+    private async Task SetReadyForPaymentAsync(Reservation reservation,
+        (int UserId, UserRole Role) currentUser, DateTime? paymentDeadlineUtc, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        reservation.Status = ReservationStatus.ApprovedAwaitingPayment;
+        reservation.ChangedAtUtc = now;
+        reservation.ChangedByUserId = currentUser.UserId;
+        reservation.ApprovedAtUtc = now;
+        reservation.ApprovedByUserId = currentUser.UserId;
+        reservation.PaymentExpiresAtUtc = paymentDeadlineUtc ??
+            now.AddMinutes(await ReservationPaymentWindowSettings.GetMinutesAsync(
+                dbContext,
+                cancellationToken));
     }
 
     private async Task InvalidateUnusedPaymentTokensAsync(
@@ -1864,7 +1870,7 @@ public class ReservationService(
             .ToListAsync(cancellationToken);
     }
 
-    private async Task ValidateApprovalCapacityAsync(
+    private async Task<EffectiveRoomTypeAvailability> ValidateApprovalCapacityAsync(
         Reservation reservation,
         CancellationToken cancellationToken)
     {
@@ -1881,6 +1887,7 @@ public class ReservationService(
         {
             throw CapacityChangedException();
         }
+        return roomTypeAvailability;
     }
 
     private async Task ValidateFinalCapacityAsync(

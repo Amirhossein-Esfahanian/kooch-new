@@ -570,6 +570,25 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
     }
   }
 
+  async function prepareManualPayment(reservation: ReservationTableItem) {
+    const id = reservation.reservationId ?? reservation.id;
+    if (!id) return;
+    setStatusChangingId(id);
+    setError("");
+    try {
+      const updated = await apiRequest<ReservationTableItem>(`/admin/reservations/${id}/prepare-payment`, { method: "PUT" });
+      setSelectedReservation(updated);
+      await viewReservation(updated, isDetailsPage);
+      await loadReservations();
+      toast.success("رزرو برای پرداخت آماده شد؛ مهلت پرداخت در جزئیات نمایش داده می‌شود.");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "آماده‌سازی رزرو برای پرداخت انجام نشد.";
+      setError(message);
+      toast.error(message);
+      throw caught;
+    } finally { setStatusChangingId(null); }
+  }
+
   async function cancelReservation(
     reservation: ReservationTableItem,
     cancellation: ReservationCancellationPayload,
@@ -1308,6 +1327,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
           } : undefined}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}
+          onPrepareManualPayment={prepareManualPayment}
           onOpenChange={(open) => {
             if (!open) {
               if (isDetailsPage) { router.push(returnHref); return; }

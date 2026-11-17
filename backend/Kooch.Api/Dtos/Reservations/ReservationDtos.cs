@@ -107,6 +107,8 @@ public class ReservationResponse : ReservationListItemResponse
     public int? ChangedByUserId { get; set; }
     public DateTime? ChangedAtUtc { get; set; }
     public IReadOnlyList<ReservationStatus> AllowedStatusTransitions { get; set; } = [];
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CanPrepareManualPayment { get; set; }
     public IReadOnlyList<ReservationTimelineEventResponse> Timeline { get; set; } = [];
 }
 
