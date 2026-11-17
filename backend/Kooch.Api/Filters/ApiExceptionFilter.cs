@@ -11,6 +11,13 @@ public class ApiExceptionFilter : IExceptionFilter
 {
     public void OnException(ExceptionContext context)
     {
+        if (context.Exception is ManualBookingReviewChangedException reviewChanged)
+        {
+            context.Result = new ConflictObjectResult(new { message = reviewChanged.Message, code = "ManualBookingReviewChanged" });
+            context.ExceptionHandled = true;
+            return;
+        }
+
         if (context.Exception is SvgSanitizationException svgException)
         {
             context.Result = new BadRequestObjectResult(new

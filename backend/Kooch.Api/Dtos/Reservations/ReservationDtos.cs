@@ -225,6 +225,9 @@ public class PagedResult<T>
 
 public class ReservationCreateRequest : IValidatableObject
 {
+    public Kooch.Api.Dtos.Payments.ManualOrderSettlementRequest? ReceivedPayment { get; set; }
+    public IReadOnlyList<decimal>? ReviewedRoomAmounts { get; set; }
+
     [EnumDataType(typeof(ReservationStatus))]
     public ReservationStatus? Status { get; set; }
 

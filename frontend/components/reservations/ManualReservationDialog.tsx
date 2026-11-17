@@ -7,6 +7,7 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { NumberedSteps } from "@/components/NumberedSteps";
 import { GuestCountControls } from "@/components/GuestCountControls";
 import styles from "./ManualReservationDialog.module.css";
+import { ManualReceiptFields } from "./ManualReceiptFields";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -48,6 +49,7 @@ interface ManualReservationDialogProps {
   reservation?: ReservationTableItem | null;
   onReviewCreatedReservation?: (reservationId: number) => void;
   canReviewCreatedReservation?: (propertyId: number) => boolean;
+  canRecordReceivedPayment?: (propertyId: number) => boolean;
 }
 
 type GuestDraft = {
@@ -77,6 +79,11 @@ type ReservationDraft = {
 };
 
 export type ReservationMutationPayload = {
+  receivedPayment?: {
+    idempotencyKey: string; confirmedAmount: number; currency: string;
+    method: string; referenceNumber: string | null; paymentDate: string;
+  };
+  reviewedRoomAmounts?: number[];
   status: ReservationTableStatus;
   propertyId: number;
   roomTypeId: number;
@@ -510,6 +517,7 @@ export function ManualReservationDialog({
   reservation,
   onReviewCreatedReservation,
   canReviewCreatedReservation,
+  canRecordReceivedPayment,
 }: ManualReservationDialogProps) {
   const currencyLabel = useSiteCurrencyLabel();
   const [open, setOpen] = useState(false);
@@ -526,6 +534,11 @@ export function ManualReservationDialog({
   const [guestDialogOpen, setGuestDialogOpen] = useState(false);
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
   const [createdOrder, setCreatedOrder] = useState<ManualBookingCreateResponse | null>(null);
+  const [recordReceived, setRecordReceived] = useState(false);
+  const [receiptMethod, setReceiptMethod] = useState("BankTransfer");
+  const [receiptReference, setReceiptReference] = useState("");
+  const receivedSubmission = useRef<{ fingerprint: string; key: string; date: string } | null>(null);
+  const [priceReviewVersion, setPriceReviewVersion] = useState(0);
   const canReviewCreated = (item: ManualBookingCreateResponse["reservations"][number]) => Boolean(
     onReviewCreatedReservation && item.propertyId && canReviewCreatedReservation?.(item.propertyId) &&
     item.status === "PendingApproval" && item.allowedStatusTransitions?.includes("ApprovedAwaitingPayment"));
@@ -733,6 +746,11 @@ export function ManualReservationDialog({
     effectiveRules && !rulesLoading && !rulesError && pricePreview && !pricePreviewLoading && !pricePreviewError &&
     roomPrices.length === selectedRoomCount && roomPrices.every(price => price.currency === pricePreview.currency) &&
     Math.abs(roomPrices.reduce((sum, price) => sum + price.finalAmount, 0) - pricePreview.finalAmount) < 0.01);
+  const canReceiveFull = Boolean(isWizard && roomsReady && !hasOnRequest &&
+    canRecordReceivedPayment?.(selectedPropertyId) && roomPrices.every(price => price.finalAmount > 0));
+  const willRecordReceived = recordReceived && canReceiveFull;
+
+  useEffect(() => { if (!canReceiveFull) setRecordReceived(false); }, [canReceiveFull]);
 
   function goToStep(step: 1 | 2 | 3) {
     setWizardStep(step);
@@ -1104,6 +1122,10 @@ export function ManualReservationDialog({
     setConfirmCreateOpen(false);
     setWizardStep(1);
     setCreatedOrder(null);
+    setRecordReceived(false);
+    setReceiptMethod("BankTransfer");
+    setReceiptReference("");
+    receivedSubmission.current = null;
     setSubmissionError("");
     setAvailabilityError("");
     setAvailabilityLoaded(false);
@@ -1224,6 +1246,7 @@ export function ManualReservationDialog({
     selectedRoomCount,
     isWizard,
     wizardAvailabilityReady,
+    priceReviewVersion,
   ]);
 
   useEffect(() => {
@@ -1567,10 +1590,7 @@ export function ManualReservationDialog({
         throw new Error("Reservation id is missing.");
       }
 
-      const result = await apiRequest<ManualBookingCreateResponse>(endpoint, {
-        method: isEditMode ? "PUT" : "POST",
-        body: JSON.stringify(
-          buildReservationMutationPayload({
+      const payload = buildReservationMutationPayload({
             status: selectedStatus,
             propertyId: selectedPropertyId,
             roomTypeId: Number(draft.roomTypeId),
@@ -1589,8 +1609,22 @@ export function ManualReservationDialog({
             ...(selectedTypeOption ? { roomTypeSelections: [{ roomTypeId: selectedTypeOption.roomTypeId, quantity: selectedRoomCount }] } : {}),
             guestType: draft.guestType,
             notes: draft.notes.trim() || null,
-          }),
-        ),
+          });
+      if (willRecordReceived && pricePreview) {
+        const fingerprint = JSON.stringify({ payload, amount: pricePreview.finalAmount, currency: pricePreview.currency,
+          roomAmounts: roomPrices.map(price => price.finalAmount), method: receiptMethod, reference: receiptReference.trim() });
+        if (receivedSubmission.current?.fingerprint !== fingerprint) receivedSubmission.current = {
+          fingerprint, key: crypto.randomUUID(), date: new Intl.DateTimeFormat("en-CA", {
+            timeZone: "Asia/Tehran", year: "numeric", month: "2-digit", day: "2-digit",
+          }).format(new Date()),
+        };
+        payload.receivedPayment = { idempotencyKey: receivedSubmission.current.key, confirmedAmount: pricePreview.finalAmount,
+          currency: pricePreview.currency, method: receiptMethod, referenceNumber: receiptReference.trim() || null,
+          paymentDate: receivedSubmission.current.date };
+        payload.reviewedRoomAmounts = roomPrices.map(price => price.finalAmount);
+      }
+      const result = await apiRequest<ManualBookingCreateResponse>(endpoint, {
+        method: isEditMode ? "PUT" : "POST", body: JSON.stringify(payload),
       });
 
       toast.success(isEditMode ? "رزرو به‌روز شد." : "رزرو اضافه شد.");
@@ -1604,6 +1638,16 @@ export function ManualReservationDialog({
         await onCreated();
       }
     } catch (caught) {
+      if (willRecordReceived && caught instanceof ApiRequestError && caught.status === 409 &&
+          typeof caught.body === "object" && caught.body !== null && "code" in caught.body &&
+          caught.body.code === "ManualBookingReviewChanged") {
+        setPricePreview(null);
+        setPriceReviewVersion(version => version + 1);
+        setWizardStep(2);
+        setSubmissionError(caught.message);
+        toast.error(caught.message);
+        return;
+      }
       if (isCapacityConflict(caught)) {
         availabilityAbortRef.current?.abort();
         rulesAbortRef.current?.abort();
@@ -1669,7 +1713,7 @@ export function ManualReservationDialog({
                 if (wizardStep !== 3 || !stayInputsValid || !roomsReady) return;
                 try { await createReservation(); }
                 catch (caught) { setSubmissionError(caught instanceof Error ? caught.message : "ذخیره رزرو انجام نشد."); }
-              }}>تایید و ایجاد رزرو</KoochButton>}
+              }}>{willRecordReceived ? "ثبت دریافت کامل و تأیید رزرو" : "تایید و ایجاد رزرو"}</KoochButton>}
           </div> : <>
             <KoochButton
               disabled={submitting}
@@ -1724,6 +1768,7 @@ export function ManualReservationDialog({
                   {item.reservationNumber} — {item.roomName || item.roomTypeName}
                 </Link>
                 <span>{formatCurrency(item.finalAmount, { currencyLabel: createdOrder.currency === "IRR" ? "ریال" : createdOrder.currency })}</span>
+                {item.status === "Confirmed" && <KoochBadge variant="success">تأییدشده</KoochBadge>}
               </div>
               {canReviewCreated(item) &&
                 <KoochButton type="button" variant="outline" size="sm" aria-label={`بررسی و تأیید رزرو ${item.reservationNumber}`}
@@ -1762,18 +1807,18 @@ export function ManualReservationDialog({
                   وضعیت رزرو
                 </p>
                 <div className="mt-2">
-                  <KoochBadge variant={statusVariant(displayedStatus)}>
-                    {statusLabels[displayedStatus] ?? displayedStatus}
+                  <KoochBadge variant={statusVariant(willRecordReceived ? "Confirmed" : displayedStatus)}>
+                    {statusLabels[willRecordReceived ? "Confirmed" : displayedStatus] ?? displayedStatus}
                   </KoochBadge>
                 </div>
               </div>
               <p className="max-w-md text-xs font-semibold leading-6 text-muted-foreground">
-                {isEditMode
+                {willRecordReceived ? "پس از ثبت رسید دریافت کامل، تمام رزروهای این سفارش تأیید می‌شوند." : isEditMode
                   ? "فقط وضعیت‌های مجاز بازگشتی از گردش‌کار قابل انتخاب هستند. تغییر انتخاب‌شده همراه ذخیره اعمال می‌شود."
                   : "وضعیت پیش‌فرض از نوع رزرو اتاق تعیین می‌شود. فقط وضعیت‌های مجاز ثبت دستی قابل انتخاب هستند."}
               </p>
             </div>
-            {!isTerminalReadOnly && statusSelectionOptions.length > 0 && (
+            {!isTerminalReadOnly && !willRecordReceived && statusSelectionOptions.length > 0 && (
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                 {statusSelectionOptions.map((status) => (
                   <KoochButton
@@ -2352,6 +2397,18 @@ export function ManualReservationDialog({
               </li>)}
             </ul>
             <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-3 font-bold"><span>مبلغ کل سفارش</span><span>{pricePreview ? formatCurrency(pricePreview.finalAmount, { currencyLabel: pricePreview.currency === "IRR" ? "ریال" : pricePreview.currency }) : "قیمت آماده نیست"}</span></p>
+            <fieldset className="grid gap-3" disabled={submitting}>
+              <legend className="mb-2 text-sm font-semibold">نحوه ثبت رزرو</legend>
+              <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="manual-create-payment"
+                checked={!willRecordReceived} onChange={() => setRecordReceived(false)} />ثبت رزرو بدون دریافت وجه</label>
+              {canReceiveFull && <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="manual-create-payment"
+                checked={willRecordReceived} onChange={() => setRecordReceived(true)} />ثبت دریافت کامل و تأیید رزرو</label>}
+              {willRecordReceived && <>
+                <p className="text-sm leading-6 text-muted-foreground">این اقدام فقط وجهی را ثبت می‌کند که قبلاً کامل دریافت شده است و از مهمان پول برداشت نمی‌کند. تاریخ رسید، امروز به وقت ایران ثبت می‌شود.</p>
+                <div className="grid gap-3 sm:grid-cols-2"><ManualReceiptFields method={receiptMethod} reference={receiptReference}
+                  onMethodChange={setReceiptMethod} onReferenceChange={setReceiptReference} disabled={submitting} /></div>
+              </>}
+            </fieldset>
             <p className="text-xs leading-6 text-muted-foreground">با ثبت، یک سفارش و برای هر اتاق یک رزرو جدا ایجاد می‌شود. ظرفیت و قیمت هنگام ثبت دوباره در سرور بررسی می‌شوند.</p>
           </section>}
           {showReview && <KoochField label="یادداشت داخلی">

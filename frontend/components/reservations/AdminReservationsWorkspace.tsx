@@ -765,6 +765,9 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
           actions={
             <ManualReservationDialog
               context="admin"
+              canRecordReceivedPayment={propertyId => canManageReservations && canManagePayments && (platformRole === "SuperAdmin" || Boolean(propertyMemberships?.some(membership =>
+                membership.propertyId === propertyId && membership.isActive && membership.membershipStatus === "Active" &&
+                membership.effectivePermissions.Bookings?.create)))}
               onCreated={loadReservations}
               canReviewCreatedReservation={propertyId => platformRole === "SuperAdmin" || Boolean(propertyMemberships?.some(membership =>
                 membership.propertyId === propertyId && membership.isActive && membership.membershipStatus === "Active" &&

@@ -100,6 +100,94 @@ public sealed partial class AdminManualPaymentService
                     (reservation.RoomId.HasValue && availability.ClaimedRoomIds.Contains(reservation.RoomId.Value)))
                     throw new InvalidOperationException($"ظرفیت رزرو {reservation.ReservationNumber} برای تسویه موجود نیست.");
             }
+            var payment = await RecordFullOrderReceiptAsync(session, payable, balances, request, receipt,
+                key, hash, actorUserId, now, cancellationToken);
+            var ids = payable.Select(reservation => reservation.Id).ToArray();
+            var tokens = await dbContext.ReservationPaymentLinkTokens
+                .Where(token => ids.Contains(token.ReservationId) && token.UsedAtUtc == null).ToListAsync(cancellationToken);
+            foreach (var token in tokens) { token.UsedAtUtc = now; token.UpdatedByUserId = actorUserId; }
+            await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
+            foreach (var reservation in payable)
+                await new ReservationActivityService(dbContext).AppendPaymentConfirmedAsync(reservation.Id, actorUserId, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return SettlementResponse(payment, false);
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
+            throw;
+        }
+    }
+
+    internal async Task EnsureReceivedPaymentAccessAsync(int actorUserId, int propertyId, CancellationToken ct)
+    {
+        await EnsurePaymentActorAsync(actorUserId, ct);
+        if (!await propertyAuthorizationService!.CanAccessPropertyAsync(actorUserId, propertyId, ct))
+            throw new UnauthorizedAccessException("به اقامتگاه این سفارش دسترسی ندارید.");
+    }
+
+    private async Task EnsurePaymentActorAsync(int actorUserId, CancellationToken ct)
+    {
+        if (permissionService is null || propertyAuthorizationService is null ||
+            !await permissionService.HasPermissionAsync(actorUserId, PermissionKey.ManagePayments, cancellationToken: ct))
+            throw new UnauthorizedAccessException("اجازهٔ ثبت تسویه ندارید.");
+        if (!await dbContext.Users.AsNoTracking().AnyAsync(user => user.Id == actorUserId && user.IsActive &&
+            (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant), ct))
+            throw new UnauthorizedAccessException("ثبت تسویه فقط برای مدیر مجاز است.");
+    }
+
+    // Only the atomic manual-create path calls this. Existing payment/approval guards are unchanged.
+    internal async Task RecordCreationReceivedPaymentAsync(BookingSession session, ManualOrderSettlementRequest request,
+        int actorUserId, CancellationToken ct)
+    {
+        if (dbContext.Database.CurrentTransaction is null || session.Id <= 0 || session.ClientId != actorUserId)
+            throw new InvalidOperationException("Received payment requires an atomic new manual booking.");
+        await EnsureReceivedPaymentAccessAsync(actorUserId, session.PropertyId, ct);
+        var reservations = session.Reservations.ToArray();
+        EnsureManualOrder(session, reservations);
+        var reservationIds = reservations.Select(reservation => reservation.Id).ToArray();
+        if (reservations.Any(reservation => reservation.Status != ReservationStatus.Pending || reservation.PaidAtUtc.HasValue) ||
+            await dbContext.Payments.AnyAsync(payment => payment.BookingSessionId == session.Id ||
+                payment.ReservationId.HasValue && reservationIds.Contains(payment.ReservationId.Value), ct))
+            throw new InvalidOperationException("Only unpaid newly created manual reservations can record this receipt.");
+        if (request.ConfirmedAmount <= 0 || decimal.Round(request.ConfirmedAmount, 2) != request.ConfirmedAmount ||
+            request.ConfirmedAmount > 9999999999999999.99m ||
+            request.ConfirmedAmount != reservations.Sum(reservation => reservation.FinalAmount))
+            throw new ArgumentException("مبلغ دریافت کامل باید با کل سفارش برابر باشد.");
+        if (reservations.Any(reservation => reservation.FinalAmount <= 0))
+            throw new InvalidOperationException("ثبت رسید کامل نیازمند مبلغ مثبت برای هر رزرو است؛ برای رزرو رایگان از ثبت بدون دریافت وجه استفاده کنید.");
+        var receipt = NormalizeCreateRequest(new AdminManualPaymentCreateRequest
+        {
+            ReservationId = reservations[0].Id, Amount = request.ConfirmedAmount, Currency = request.Currency,
+            Method = request.Method, PaymentDate = request.PaymentDate, PaymentTime = request.PaymentTime,
+            ReferenceNumber = request.ReferenceNumber, DestinationBank = request.DestinationBank,
+            DestinationAccountReference = request.DestinationAccountReference, Notes = request.Notes
+        });
+        if (receipt.Currency != session.Currency)
+            throw new InvalidOperationException("ارز دریافت با سفارش یکسان نیست.");
+        foreach (var group in reservations.GroupBy(reservation => reservation.RoomTypeId))
+        {
+            var range = await effectiveAvailabilityService.GetRangeAsync([group.Key],
+                reservations[0].CheckInDate, reservations[0].CheckOutDate, cancellationToken: ct);
+            if (!range.TryGetValue(group.Key, out var availability) || !availability.HasCapacityForFullRange(group.Count()) ||
+                availability.Nights.Values.Any(night => night.EffectiveStatus != AvailabilityStatus.Available || night.IsClosed) ||
+                group.Any(reservation => reservation.RoomId.HasValue && availability.ClaimedRoomIds.Contains(reservation.RoomId.Value)))
+                throw new InvalidOperationException("ظرفیت Available برای ثبت دریافت کامل موجود نیست.");
+        }
+        var now = DateTime.UtcNow;
+        await RecordFullOrderReceiptAsync(session, reservations, reservations.ToDictionary(reservation => reservation.Id,
+                reservation => reservation.FinalAmount), request, receipt,
+            NormalizeRequired(request.IdempotencyKey, 200, "Idempotency key"), session.RequestHash!, actorUserId, now, ct);
+        await dbContext.SaveWithVoucherNumberRetryAsync(ct);
+        foreach (var reservation in reservations)
+            await new ReservationActivityService(dbContext).AppendPaymentConfirmedAsync(reservation.Id, actorUserId, ct);
+    }
+
+    private async Task<Payment> RecordFullOrderReceiptAsync(BookingSession session, IReadOnlyCollection<Reservation> payable,
+        IReadOnlyDictionary<int, decimal> balances, ManualOrderSettlementRequest request, NormalizedCreateRequest receipt,
+        string key, string hash, int actorUserId, DateTime now, CancellationToken cancellationToken)
+    {
             var payment = new Payment
             {
                 BookingSessionId = session.Id, Channel = PaymentChannel.Manual, Amount = request.ConfirmedAmount,
@@ -131,35 +219,15 @@ public sealed partial class AdminManualPaymentService
                 reservation.UpdatedByUserId = actorUserId;
                 await reservationVoucherService.IssueAsync(reservation, payment, item, cancellationToken);
             }
-            var ids = payable.Select(reservation => reservation.Id).ToArray();
-            var tokens = await dbContext.ReservationPaymentLinkTokens
-                .Where(token => ids.Contains(token.ReservationId) && token.UsedAtUtc == null).ToListAsync(cancellationToken);
-            foreach (var token in tokens) { token.UsedAtUtc = now; token.UpdatedByUserId = actorUserId; }
-            await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
-            foreach (var reservation in payable)
-                await new ReservationActivityService(dbContext).AppendPaymentConfirmedAsync(reservation.Id, actorUserId, cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
-            return SettlementResponse(payment, false);
-        }
-        catch
-        {
-            await transaction.RollbackAsync(CancellationToken.None);
-            dbContext.ChangeTracker.Clear();
-            throw;
-        }
+            return payment;
     }
 
     private async Task<BookingSession> LoadAuthorizedManualOrderAsync(int id, int actorUserId, CancellationToken ct)
     {
-        if (permissionService is null || propertyAuthorizationService is null ||
-            !await permissionService.HasPermissionAsync(actorUserId, PermissionKey.ManagePayments, cancellationToken: ct))
-            throw new UnauthorizedAccessException("اجازهٔ ثبت تسویه ندارید.");
-        if (!await dbContext.Users.AsNoTracking().AnyAsync(user => user.Id == actorUserId && user.IsActive &&
-            (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant), ct))
-            throw new UnauthorizedAccessException("ثبت تسویه فقط برای مدیر مجاز است.");
+        await EnsurePaymentActorAsync(actorUserId, ct);
         var session = await dbContext.BookingSessions.AsNoTracking().SingleOrDefaultAsync(session => session.Id == id, ct)
             ?? throw new KeyNotFoundException("سفارش پیدا نشد.");
-        if (!await propertyAuthorizationService.CanAccessPropertyAsync(actorUserId, session.PropertyId, ct))
+        if (!await propertyAuthorizationService!.CanAccessPropertyAsync(actorUserId, session.PropertyId, ct))
             throw new UnauthorizedAccessException("به اقامتگاه این سفارش دسترسی ندارید.");
         return session;
     }

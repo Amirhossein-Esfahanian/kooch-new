@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
-import { KoochField, KoochInput, KoochSelect } from "@/components/KoochFormControls";
+import { ManualReceiptFields } from "./ManualReceiptFields";
 import { apiRequest } from "@/lib/owner-api";
 import { formatCurrency } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
@@ -95,14 +95,9 @@ export function ManualOrderSettlement({ bookingSessionId, onSettled }: {
             currencyLabel: balance.currency === "IRR" ? "ریال" : balance.currency,
           }))}</p>
           {!balance.canSettle && <KoochAlert title="تسویه در دسترس نیست">{balance.unavailableReason}</KoochAlert>}
-          <KoochField label="روش دریافت وجه"><KoochSelect disabled={submitting} value={method}
-            onChange={event => { setMethod(event.target.value); key.current = null; }}>
-            <option value="BankTransfer">واریز بانکی</option><option value="CardToCard">کارت به کارت</option>
-            <option value="Paya">پایا</option><option value="Satna">ساتنا</option>
-            <option value="AccountTransfer">انتقال حساب</option><option value="Other">سایر</option>
-          </KoochSelect></KoochField>
-          <KoochField label="شماره پیگیری (اختیاری)"><KoochInput maxLength={200} disabled={submitting}
-            value={reference} onChange={event => { setReference(event.target.value); key.current = null; }} /></KoochField>
+          <ManualReceiptFields method={method} reference={reference} disabled={submitting}
+            onMethodChange={value => { setMethod(value); key.current = null; }}
+            onReferenceChange={value => { setReference(value); key.current = null; }} />
         </>}
         <KoochButton type="button" variant="ghost" disabled={loading || submitting} onClick={() => {
           key.current = null; void load();

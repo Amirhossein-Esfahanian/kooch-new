@@ -432,21 +432,22 @@ public sealed partial class AdminManualBookingSqlServerTests(SqlServerWalletData
             .AddInterceptors(interceptors).Options);
     }
 
-    private static ReservationService Reservations(KoochDbContext db)
+    private static ReservationService Reservations(KoochDbContext db, bool canCreate = true, bool canPay = true, bool canAccess = true)
     {
         var effective = new EffectiveAvailabilityService(db);
         var children = new ChildPricingRuleResolver(db);
         return new(db, new ReservationAvailabilityService(db, effective),
             new ReservationPricingService(db, new PricingService(), children, new ReservationRulesResolver(db, children)),
             new ReservationNumberGenerator(db), new RecordingNotificationService(), new RecordingReservationNotificationDispatcher(),
-            new RecordingAuditLogService(), new StubPermissionService(true), new StubPropertyAuthorizationService(true),
+            new RecordingAuditLogService(), new StubPermissionService(canCreate), new StubPropertyAuthorizationService(canAccess),
             new ReservationStatusWorkflow(), effective, new TestHostEnvironment(),
-            new CancellationFinancialResolutionService(db, new SettlementService(db, TimeProvider.System), TimeProvider.System));
+            new CancellationFinancialResolutionService(db, new SettlementService(db, TimeProvider.System), TimeProvider.System),
+            Payments(db, canPay, canAccess));
     }
 
-    private static AdminManualPaymentService Payments(KoochDbContext db) => new(db, new EffectiveAvailabilityService(db),
+    private static AdminManualPaymentService Payments(KoochDbContext db, bool canPay = true, bool canAccess = true) => new(db, new EffectiveAvailabilityService(db),
         new PaymentFinancializationService(db, new CommissionPolicyResolver(db)),
-        new ReservationVoucherService(db, new VoucherNumberGenerator(db)), new StubPermissionService(true), new StubPropertyAuthorizationService(true));
+        new ReservationVoucherService(db, new VoucherNumberGenerator(db)), new StubPermissionService(canPay), new StubPropertyAuthorizationService(canAccess));
 
     private async Task<Seed> SeedAsync()
     {

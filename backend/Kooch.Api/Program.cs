@@ -154,6 +154,7 @@ builder.Services.AddScoped<IVoucherNumberGenerator, VoucherNumberGenerator>();
 builder.Services.AddScoped<IReservationVoucherService, ReservationVoucherService>();
 builder.Services.AddScoped<IReservationVoucherQueryService, ReservationVoucherQueryService>();
 builder.Services.AddScoped<IAdminManualPaymentService, AdminManualPaymentService>();
+builder.Services.AddScoped<AdminManualPaymentService>();
 builder.Services.AddWriterHostedServices(automaticDatabaseMutationsEnabled);
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IAccountBookingSessionPaymentService, AccountBookingSessionPaymentService>();

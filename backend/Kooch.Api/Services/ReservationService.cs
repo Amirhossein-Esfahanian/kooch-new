@@ -25,7 +25,8 @@ public class ReservationService(
     IReservationStatusWorkflow statusWorkflow,
     IEffectiveAvailabilityService effectiveAvailabilityService,
     IHostEnvironment hostEnvironment,
-    CancellationFinancialResolutionService? financialResolutionService = null) : IReservationService
+    CancellationFinancialResolutionService? financialResolutionService = null,
+    AdminManualPaymentService? receivedPaymentService = null) : IReservationService
 {
     private const decimal MaximumStoredAmount = 9999999999999999.99m;
 
@@ -262,11 +263,64 @@ public class ReservationService(
             request.ChildAges.Count != request.Children || request.ChildAges.Any(age => age is < 0 or > 17))
             throw new ArgumentException("Guest counts and child ages are invalid.");
 
+        var received = request.ReceivedPayment;
+        string? submissionKey = null;
+        string? submissionHash = null;
+        if (received is not null)
+        {
+            if (receivedPaymentService is null)
+                throw new InvalidOperationException("Manual received-payment creation is not configured.");
+            await receivedPaymentService.EnsureReceivedPaymentAccessAsync(currentUser.UserId, request.PropertyId, cancellationToken);
+            submissionKey = BookingSessionService.NormalizeIdempotencyKey(received.IdempotencyKey);
+            if (submissionKey is null || submissionKey.Length > 200)
+                throw new ArgumentException("A submission idempotency key of up to 200 characters is required.");
+            submissionHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                JsonSerializer.Serialize(new { Purpose = "AdminManualReceivedPaymentV1", Request = request }))));
+        }
+
         // Use the same room-type lock order as checkout. All validation, authoritative
         // pricing and the graph save occur inside this transaction, before any notification.
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
+        if (submissionKey is not null)
+        {
+            // Same transaction-owned resource and persisted unique key as BookingSession creation.
+            if (dbContext.Database.IsSqlServer())
+            {
+                var keyHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(submissionKey)));
+                var resource = $"Kooch:BookingSession:{currentUser.UserId}:{keyHash}";
+                await dbContext.Database.ExecuteSqlInterpolatedAsync($"""
+                    DECLARE @result int;
+                    EXEC @result = sys.sp_getapplock @Resource = {resource}, @LockMode = 'Exclusive',
+                        @LockOwner = 'Transaction', @LockTimeout = 10000;
+                    IF @result < 0 THROW 51000, 'Could not acquire the booking submission lock.', 1;
+                    """, cancellationToken);
+            }
+            var previous = await dbContext.BookingSessions.IgnoreQueryFilters().AsNoTracking()
+                .SingleOrDefaultAsync(session => session.ClientId == currentUser.UserId && session.IdempotencyKey == submissionKey,
+                    cancellationToken);
+            if (previous is not null)
+            {
+                if (previous.IsDeleted || previous.PropertyId != request.PropertyId || previous.RequestHash != submissionHash)
+                    throw new InvalidOperationException("این شناسهٔ ثبت قبلاً با اطلاعات دیگری استفاده شده است.");
+                var saved = await ReservationQuery().Where(reservation => reservation.BookingSessionId == previous.Id)
+                    .OrderBy(reservation => reservation.Id).ToListAsync(cancellationToken);
+                if (saved.Count == 0 || saved.Any(reservation => reservation.Source != ReservationSource.AdminCreated) ||
+                    !await dbContext.Payments.AsNoTracking().AnyAsync(payment => payment.BookingSessionId == previous.Id &&
+                        payment.Channel == PaymentChannel.Manual && payment.Status == PaymentStatus.Successful &&
+                        payment.IdempotencyKey == submissionKey, cancellationToken))
+                    throw new InvalidOperationException("اطلاعات ثبت قبلی نیاز به بررسی دارد؛ دوباره ثبت نکنید.");
+                await transaction.CommitAsync(cancellationToken);
+                return new ManualBookingCreateResponse
+                {
+                    BookingSessionId = previous.Id, SessionCode = previous.SessionCode, Currency = previous.Currency,
+                    TotalAmount = saved.Sum(reservation => reservation.FinalAmount),
+                    Reservations = saved.Select(reservation => ToResponse(reservation, reservation.Property,
+                        reservation.RoomType, reservation.Guest)).ToArray()
+                };
+            }
+        }
         var property = await PropertyApprovalWriteScope.LockApprovedForNewBookingAsync(
             dbContext, request.PropertyId, cancellationToken);
         var orderedRooms = await ResolveManualUnitsAsync(request, property.Id, cancellationToken);
@@ -305,13 +359,16 @@ public class ReservationService(
                 group.Where(room => room.Id.HasValue).Select(room => room.Id!.Value).ToArray(), excludedReservationId: null,
                 cancellationToken: cancellationToken);
             onRequest[group.Key] = availability.HasOnRequestNight;
+            if (received is not null && (availability.HasOnRequestNight ||
+                range.Nights.Values.Any(night => night.EffectiveStatus != AvailabilityStatus.Available || night.IsClosed)))
+                throw new InvalidOperationException("ثبت دریافت کامل فقط برای تمام اتاق‌ها و شب‌های Available مجاز است.");
         }
 
         var now = DateTime.UtcNow;
         var session = new BookingSession
         {
             ClientId = currentUser.UserId, GuestId = guest.Id, PropertyId = property.Id,
-            CreatedByUserId = currentUser.UserId
+            CreatedByUserId = currentUser.UserId, IdempotencyKey = submissionKey, RequestHash = submissionHash
         };
         var responses = new List<ReservationResponse>();
         for (var index = 0; index < orderedRooms.Length; index++)
@@ -356,6 +413,12 @@ public class ReservationService(
             responses.Add(response);
         }
 
+        if (received is not null && (request.ReviewedRoomAmounts is null ||
+                !request.ReviewedRoomAmounts.SequenceEqual(session.Reservations.Select(item => item.FinalAmount)) ||
+                received.ConfirmedAmount != session.Reservations.Sum(item => item.FinalAmount) ||
+                !string.Equals(received.Currency?.Trim(), session.Currency, StringComparison.OrdinalIgnoreCase)))
+            throw new ManualBookingReviewChangedException();
+
         var codeGenerator = new BookingSessionCodeGenerator(dbContext);
         session.SessionCode = await codeGenerator.GenerateAsync(cancellationToken);
         var numbers = await reservationNumberGenerator.GenerateBatchAsync(orderedRooms.Length, now, cancellationToken);
@@ -363,6 +426,21 @@ public class ReservationService(
             session.Reservations.ElementAt(index).ReservationNumber = numbers[index];
         dbContext.BookingSessions.Add(session);
         await codeGenerator.SaveWithSessionCodeRetryAsync(dbContext, reservationNumberGenerator, cancellationToken);
+        if (received is not null)
+        {
+            await receivedPaymentService!.RecordCreationReceivedPaymentAsync(session, received, currentUser.UserId, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            // Return final paid values, never the pre-receipt Pending projection.
+            var saved = await ReservationQuery().Where(reservation => reservation.BookingSessionId == session.Id)
+                .OrderBy(reservation => reservation.Id).ToListAsync(cancellationToken);
+            return new ManualBookingCreateResponse
+            {
+                BookingSessionId = session.Id, SessionCode = session.SessionCode, Currency = session.Currency,
+                TotalAmount = saved.Sum(reservation => reservation.FinalAmount),
+                Reservations = saved.Select(reservation => ToResponse(reservation, reservation.Property,
+                    reservation.RoomType, reservation.Guest)).ToArray()
+            };
+        }
         for (var index = 0; index < orderedRooms.Length; index++)
         {
             var reservation = session.Reservations.ElementAt(index);

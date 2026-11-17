@@ -3,6 +3,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import { ManualOrderSettlement } from "@/components/reservations/ManualOrderSettlement";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
+import { ApiRequestError } from "@/lib/owner-api";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() }));
 vi.mock("@/lib/owner-api", async importOriginal => ({
@@ -61,9 +62,10 @@ it("does not disguise a failed availability request as empty inventory", async (
 });
 
 async function openStay(onCreated = vi.fn(), fixedPropertyId: number | null = 10, onReviewCreatedReservation?: (id: number) => void,
-  canReviewCreatedReservation = (_propertyId: number) => true) {
+  canReviewCreatedReservation = (_propertyId: number) => true, canReceive = false) {
   render(<ManualReservationDialog context="admin" fixedPropertyId={fixedPropertyId ?? undefined} onCreated={onCreated}
-    onReviewCreatedReservation={onReviewCreatedReservation} canReviewCreatedReservation={canReviewCreatedReservation} />);
+    onReviewCreatedReservation={onReviewCreatedReservation} canReviewCreatedReservation={canReviewCreatedReservation}
+    canRecordReceivedPayment={() => canReceive} />);
   fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
   if (fixedPropertyId === null) {
     fireEvent.click(await screen.findByRole("button", { name: /^اقامتگاه/ }));
@@ -117,6 +119,115 @@ it("keeps API currency and amounts consistent from preview through creation and 
   await waitFor(() => expect(mocks.api.mock.calls.some(([path]) => path.endsWith("/15/settle"))).toBe(true));
   const receipt = mocks.api.mock.calls.find(([path]) => path.endsWith("/15/settle"))!;
   expect(JSON.parse(receipt[1].body)).toMatchObject({ confirmedAmount: 5_000_000, currency: "IRR" });
+});
+
+it("defaults to unchanged unpaid creation even for an authorized receipt actor", async () => {
+  await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect((screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }) as HTMLInputElement).checked).toBe(false);
+  expect(screen.queryByLabelText("روش دریافت وجه")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  const payload = JSON.parse(mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")![1].body);
+  expect(payload.status).toBe("Pending");
+  expect(payload.receivedPayment).toBeUndefined();
+  expect(payload.reviewedRoomAmounts).toBeUndefined();
+});
+
+it("records a full received receipt only on final submit and shows all confirmed reservation links", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    const result = await original(path, ...args);
+    return path === "/admin/reservations" ? { ...result,
+      reservations: result.reservations.map((room: object) => ({ ...room, status: "Confirmed" })) } : result;
+  });
+  await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  expect(screen.getByText(/از مهمان پول برداشت نمی‌کند/)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText("روش دریافت وجه"), { target: { value: "CardToCard" } });
+  fireEvent.change(screen.getByLabelText("شماره پیگیری (اختیاری)"), { target: { value: " REF-123 " } });
+  expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations")).toHaveLength(0);
+  const submit = screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" });
+  fireEvent.click(submit); fireEvent.click(submit);
+  const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  const calls = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations");
+  expect(calls).toHaveLength(1);
+  expect(JSON.parse(calls[0][1].body)).toMatchObject({ status: "Pending", reviewedRoomAmounts: [200, 200, 200],
+    receivedPayment: { confirmedAmount: 600, currency: "IRR", method: "CardToCard", referenceNumber: "REF-123",
+      idempotencyKey: expect.any(String), paymentDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) } });
+  expect(within(result).getAllByText("تأییدشده")).toHaveLength(3);
+  expect(within(result).getAllByRole("link")).toHaveLength(3);
+  expect(within(result).getByText("O-123456")).toBeTruthy();
+  expect(within(result).queryByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeNull();
+});
+
+it("does not offer received payment without permission", async () => {
+  await openStay(); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect(screen.queryByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeNull();
+});
+
+it("keeps OnRequest on its current unpaid flow even with receipt permission", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    const result = await original(path, ...args);
+    return path.startsWith("/admin/reservations/available-rooms") ? { ...result,
+      options: result.options.map((option: { rooms: object[] }) => ({ ...option, bookingMode: "OnRequest",
+        rooms: option.rooms.map(room => ({ ...room, bookingMode: "OnRequest" })) })) } : result;
+  });
+  await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect(screen.queryByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  const payload = JSON.parse(mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")![1].body);
+  expect(payload.status).toBe("PendingApproval");
+  expect(payload.receivedPayment).toBeUndefined();
+});
+
+it("retains the same receipt submission key on a failed request retry", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  let attempts = 0;
+  mocks.api.mockImplementation((path: string, ...args: unknown[]) => {
+    if (path === "/admin/reservations" && attempts++ === 0) return Promise.reject(new Error("response interrupted"));
+    return original(path, ...args);
+  });
+  await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  await screen.findByText("response interrupted");
+  fireEvent.click(screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  const calls = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations");
+  expect(calls).toHaveLength(2);
+  expect(calls[0][1].body).toBe(calls[1][1].body);
+});
+
+it("requires a new review after a stale price or currency response without recording another receipt", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  let stale = false;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    if (path === "/admin/reservations") {
+      stale = true;
+      throw new ApiRequestError("قیمت یا ارز سفارش تغییر کرده است؛ دوباره بررسی کنید.", 409, { code: "ManualBookingReviewChanged" });
+    }
+    const result = await original(path, ...args);
+    return path === "/admin/reservations/price-preview" && stale
+      ? { ...result, finalAmount: 660, roomPrices: result.roomPrices.map((room: object) => ({ ...room, finalAmount: 220 })) } : result;
+  });
+  await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  expect(await screen.findByRole("heading", { name: "اتاق‌های قابل رزرو" })).toBeTruthy();
+  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect(screen.getByText("۶۶۰ ریال")).toBeTruthy();
+  expect((screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }) as HTMLInputElement).checked).toBe(true);
+  expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations")).toHaveLength(1);
 });
 
 it.each(["IRR", "USD"])("uses the stored currency in manual reservation amount details without converting it: %s", async currency => {
