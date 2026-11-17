@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -10,8 +10,8 @@ import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
-import { KoochIcon } from "@/components/KoochIcon";
-import { KoochField, KoochInput, KoochSelect, KoochTextarea } from "@/components/KoochFormControls";
+import { AdminTaskCreateDialog, type TaskAssignee } from "@/components/tasks/AdminTaskCreateDialog";
+import { KoochField, KoochSelect, KoochTextarea } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { formatDateTime, formatNumber } from "@/lib/account-reservations";
 import { apiRequest } from "@/lib/owner-api";
@@ -45,21 +45,6 @@ type AdminTask = {
   completedAtUtc: string | null;
   changes: TaskChange[];
 };
-type TaskAssignee = { id: number; displayName: string };
-type ReservationOption = { reservationId: number; reservationNumber: string; propertyName: string };
-type ReservationDetailOption = { id?: number; reservationId?: number; reservationNumber: string; propertyName?: string | null };
-type ReservationSearchResult = { items: ReservationOption[] };
-type CreateDraft = {
-  title: string;
-  description: string;
-  priority: TaskPriority;
-  dueAtLocal: string;
-  assignedToUserId: string;
-  reservationId: string;
-};
-const emptyCreateDraft = (): CreateDraft => ({
-  title: "", description: "", priority: "Normal", dueAtLocal: "", assignedToUserId: "", reservationId: "",
-});
 
 const statuses: { value: TaskStatus; label: string }[] = [
   { value: "Open", label: "باز" },
@@ -92,14 +77,7 @@ export default function AdminTasksPage() {
   const [assigneesLoading, setAssigneesLoading] = useState(false);
   const [assigneesError, setAssigneesError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
-  const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreateDraft);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
-  const [reservationSearch, setReservationSearch] = useState("");
-  const [reservationOptions, setReservationOptions] = useState<ReservationOption[]>([]);
-  const [reservationSearching, setReservationSearching] = useState(false);
-  const [reservationSearched, setReservationSearched] = useState(false);
-  const [reservationError, setReservationError] = useState<string | null>(null);
+  const [initialReservationId, setInitialReservationId] = useState<number | undefined>();
   const handledReservationLink = useRef(false);
   const handledTaskLink = useRef(false);
   const [nextAssigneeId, setNextAssigneeId] = useState("");
@@ -170,14 +148,13 @@ export default function AdminTasksPage() {
   }, [canReadTasks, openTask]);
 
   function openCreate() {
-    setCreateDraft(emptyCreateDraft());
-    setCreateError(null);
-    setReservationSearch("");
-    setReservationOptions([]);
-    setReservationError(null);
-    setReservationSearched(false);
+    setInitialReservationId(undefined);
     setCreateOpen(true);
   }
+
+  useEffect(() => {
+    if (canReadTasks && new URLSearchParams(window.location.search).get("scope") === "created") setScope("created");
+  }, [canReadTasks]);
 
   useEffect(() => {
     if (!canReadTasks || handledReservationLink.current) return;
@@ -185,77 +162,9 @@ export default function AdminTasksPage() {
     if (rawId === null) return;
     handledReservationLink.current = true;
     if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(Number(rawId))) return;
-    openCreate();
-    setReservationSearching(true);
-    void apiRequest<ReservationDetailOption>(`/admin/reservations/${rawId}`)
-      .then((reservation) => {
-        if ((reservation.reservationId ?? reservation.id) !== Number(rawId)) throw new Error("رزرو انتخاب‌شده معتبر نیست.");
-        setReservationOptions([{ reservationId: Number(rawId), reservationNumber: reservation.reservationNumber, propertyName: reservation.propertyName ?? "" }]);
-        setCreateDraft((current) => ({ ...current, reservationId: rawId }));
-      })
-      .catch((error) => {
-        setReservationError(errorText(error));
-      })
-      .finally(() => {
-        setReservationSearching(false);
-      });
+    setInitialReservationId(Number(rawId));
+    setCreateOpen(true);
   }, [canReadTasks]);
-
-  async function searchReservations() {
-    const query = reservationSearch.trim();
-    if (!query) return;
-    setReservationSearching(true);
-    setReservationSearched(true);
-    setReservationError(null);
-    try {
-      const params = new URLSearchParams({ reservationNumber: query, page: "1", pageSize: "10" });
-      const result = await apiRequest<ReservationSearchResult>(`/admin/reservations?${params.toString()}`);
-      setReservationOptions(result.items);
-    } catch (error) {
-      setReservationOptions([]);
-      setReservationError(errorText(error));
-    } finally {
-      setReservationSearching(false);
-    }
-  }
-
-  async function createTask(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (creating) return;
-    if (!createDraft.title.trim() || !createDraft.assignedToUserId) {
-      setCreateError("عنوان و مسئول کار را تعیین کنید.");
-      return;
-    }
-    const dueAt = createDraft.dueAtLocal ? new Date(createDraft.dueAtLocal) : null;
-    if (dueAt && Number.isNaN(dueAt.getTime())) {
-      setCreateError("زمان سررسید معتبر نیست.");
-      return;
-    }
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await apiRequest<AdminTask>("/admin/tasks", {
-        method: "POST",
-        body: JSON.stringify({
-          title: createDraft.title.trim(),
-          description: createDraft.description.trim() || null,
-          priority: createDraft.priority,
-          dueAtUtc: dueAt?.toISOString() ?? null,
-          assignedToUserId: Number(createDraft.assignedToUserId),
-          reservationId: createDraft.reservationId ? Number(createDraft.reservationId) : null,
-        }),
-      });
-      setCreateOpen(false);
-      setScope("created");
-      setStatusFilter("all");
-      await load();
-      toast.success("کار ایجاد شد.");
-    } catch (error) {
-      setCreateError(errorText(error));
-    } finally {
-      setCreating(false);
-    }
-  }
 
   async function reassignTask() {
     if (!selected || reassigning || !nextAssigneeId || Number(nextAssigneeId) === selected.assignedToUserId) return;
@@ -326,53 +235,12 @@ export default function AdminTasksPage() {
             </article>)}
           </div>}
         </KoochCard>
-        <KoochDialog open={createOpen} onOpenChange={(open) => { if (!creating) setCreateOpen(open); }} title="ایجاد کار" size="md" closeDisabled={creating}>
-          <form className="grid gap-4" onSubmit={(event) => void createTask(event)}>
-            <KoochField label="عنوان" required>
-              <KoochInput value={createDraft.title} maxLength={250} required disabled={creating} onChange={(event) => setCreateDraft({ ...createDraft, title: event.target.value })} />
-            </KoochField>
-            <KoochField label="شرح">
-              <KoochTextarea value={createDraft.description} maxLength={4000} disabled={creating} onChange={(event) => setCreateDraft({ ...createDraft, description: event.target.value })} />
-            </KoochField>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <KoochField label="اولویت" required>
-                <KoochSelect value={createDraft.priority} disabled={creating} onChange={(event) => setCreateDraft({ ...createDraft, priority: event.target.value as TaskPriority })}>
-                  <option value="Low">کم</option><option value="Normal">عادی</option><option value="High">زیاد</option>
-                </KoochSelect>
-              </KoochField>
-              <KoochField label="سررسید (اختیاری)" helperText="زمان را به وقت محلی خود وارد کنید.">
-                <KoochInput type="datetime-local" value={createDraft.dueAtLocal} disabled={creating} onChange={(event) => setCreateDraft({ ...createDraft, dueAtLocal: event.target.value })} />
-              </KoochField>
-            </div>
-            <KoochField label="مسئول کار" required>
-              <KoochSelect value={createDraft.assignedToUserId} disabled={creating || assigneesLoading || Boolean(assigneesError)} onChange={(event) => setCreateDraft({ ...createDraft, assignedToUserId: event.target.value })}>
-                <option value="">انتخاب مدیر</option>
-                {assignees.map((assignee) => <option key={assignee.id} value={assignee.id}>{assignee.displayName}</option>)}
-              </KoochSelect>
-            </KoochField>
-            {assigneesLoading && <p role="status" className="text-sm text-muted-foreground">در حال دریافت مدیران…</p>}
-            {assigneesError && <div className="grid justify-items-start gap-2"><KoochAlert variant="destructive">{assigneesError}</KoochAlert><KoochButton variant="outline" onClick={() => void loadAssignees()}>تلاش دوباره</KoochButton></div>}
-            <div className="grid gap-2">
-              <KoochField label="جستجوی رزرو (اختیاری)">
-                <KoochInput value={reservationSearch} placeholder="شماره رزرو، مانند R-123456" disabled={creating || reservationSearching} onChange={(event) => { setReservationSearch(event.target.value); setReservationOptions([]); setReservationSearched(false); setCreateDraft((current) => ({ ...current, reservationId: "" })); }} />
-              </KoochField>
-              <KoochButton className="justify-self-start" size="sm" variant="utility" leftIcon={<KoochIcon name="search" style={{ width: 16, height: 16 }} />} disabled={!reservationSearch.trim()} loading={reservationSearching} onClick={() => void searchReservations()}>جستجوی رزرو</KoochButton>
-              {reservationError && <KoochAlert variant="destructive">{reservationError}</KoochAlert>}
-              {reservationOptions.length > 0 && <KoochField label="رزرو مرتبط">
-                <KoochSelect value={createDraft.reservationId} disabled={creating} onChange={(event) => setCreateDraft({ ...createDraft, reservationId: event.target.value })}>
-                  <option value="">بدون رزرو مرتبط</option>
-                  {reservationOptions.map((reservation) => <option key={reservation.reservationId} value={reservation.reservationId}>{reservation.reservationNumber} — {reservation.propertyName}</option>)}
-                </KoochSelect>
-              </KoochField>}
-              {reservationSearched && !reservationSearching && reservationOptions.length === 0 && !reservationError && <p className="text-xs text-muted-foreground">رزروی با این شماره پیدا نشد.</p>}
-            </div>
-            {createError && <KoochAlert variant="destructive">{createError}</KoochAlert>}
-            <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-              <KoochButton variant="outline" disabled={creating} onClick={() => setCreateOpen(false)}>انصراف</KoochButton>
-              <KoochButton type="submit" loading={creating} disabled={assigneesLoading || Boolean(assigneesError) || !createDraft.title.trim() || !createDraft.assignedToUserId}>ایجاد کار</KoochButton>
-            </div>
-          </form>
-        </KoochDialog>
+        {createOpen && <AdminTaskCreateDialog
+          initialReservationId={initialReservationId}
+          assigneeResource={{ items: assignees, loading: assigneesLoading, error: assigneesError, retry: () => void loadAssignees() }}
+          onClose={() => setCreateOpen(false)}
+          onCreated={async () => { setScope("created"); setStatusFilter("all"); await load(); }}
+        />}
         <KoochDialog open={selected !== null || detailLoading || detailError !== null} onOpenChange={(open) => { if (!open && !saving && !reassigning) { setSelected(null); setDetailError(null); } }} title={selected?.title ?? "جزئیات کار"} size="md" closeDisabled={saving || reassigning}>
           {detailLoading ? <p role="status">در حال دریافت جزئیات…</p> : detailError && !selected ? <div className="grid justify-items-start gap-3"><KoochAlert variant="destructive">{detailError}</KoochAlert><KoochButton variant="outline" onClick={() => setDetailError(null)}>بستن</KoochButton></div> : selected && <div className="grid gap-5">
             <div className="grid gap-2 text-sm sm:grid-cols-2">

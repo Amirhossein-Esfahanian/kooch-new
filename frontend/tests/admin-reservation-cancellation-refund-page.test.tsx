@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -25,9 +25,10 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 }));
 vi.mock("@/components/reservations/ManualReservationDialog", () => ({ ManualReservationDialog: () => null }));
 vi.mock("@/components/reservations/ReservationTable", () => ({
-  ReservationTable: ({ emptyMessage, onPageChange, onView }: {
+  ReservationTable: ({ emptyMessage, currentPage, onPageChange, onView }: {
+    currentPage: number;
     emptyMessage: string; onPageChange: (page: number) => void; onView: (item: unknown) => void;
-  }) => <div>
+  }) => <div data-testid="reservation-list" data-page={currentPage}>
     <button onClick={() => onView({ id: 12, reservationNumber: "R-123456" })}>مشاهده رزرو آزمون</button>
     <button onClick={() => onPageChange(2)}>صفحه دوم آزمون</button>
     <p>{emptyMessage}</p>
@@ -42,7 +43,9 @@ vi.mock("@/components/reservations/ReservationDetailsDialog", () => ({
     const refund = props.onRefund as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
     const rejectRequest = props.onRejectCancellationRequest as ((item: unknown, note: string | null) => Promise<void>) | undefined;
     const createRequest = props.onCreateCancellationRequest as ((item: unknown, request: unknown) => Promise<void>) | undefined;
+    const assignTask = props.onAssignTask as ((item: unknown) => void) | undefined;
     return <div>
+      {Boolean(props.open) && item && assignTask && <button onClick={() => assignTask(item)}>ارجاع کار</button>}
       <span>Cancellation request: {item?.cancellationRequest?.status ?? "-"}</span>
       {item?.cancellationRequest?.status === "Pending" && rejectRequest &&
         <button onClick={() => void rejectRequest(item, "نیاز به بررسی").catch(() => undefined)}>Reject guest request</button>}
@@ -144,6 +147,65 @@ describe("Admin cancellation and refund API integration", () => {
     rejectRequestPromise = null;
     createRequestFailure = null;
     installApi();
+  });
+
+  it("returns from task Cancel to the same details without losing applied filters or pagination", async () => {
+    const baseRequest = mocks.apiRequest.getMockImplementation();
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => path === "/admin/tasks/assignees"
+      ? Promise.resolve([{ id: 4, displayName: "مدیر آزمون" }]) : baseRequest?.(path, init));
+    render(<AdminReservationsPage />);
+    fireEvent.change(screen.getByLabelText("شماره رزرو"), { target: { value: "R-123456" } });
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const params = new URL(String(path), "http://test.local").searchParams;
+      return params.get("reservationNumber") === "R-123456" && params.get("page") === "1";
+    })).toBe(true), { timeout: 3000 });
+    fireEvent.click(screen.getByRole("button", { name: "صفحه دوم آزمون" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const params = new URL(String(path), "http://test.local").searchParams;
+      return params.get("reservationNumber") === "R-123456" && params.get("page") === "2";
+    })).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده رزرو آزمون" }));
+    fireEvent.click(await screen.findByRole("button", { name: "ارجاع کار" }));
+    const dialog = await screen.findByRole("dialog", { name: "ایجاد کار" });
+    await waitFor(() => expect((within(dialog).getByLabelText("رزرو مرتبط") as HTMLSelectElement).value).toBe("12"));
+    expect(mocks.detail?.open).toBe(false);
+    fireEvent.change(within(dialog).getByLabelText(/عنوان/), { target: { value: "کار ثبت‌نشده" } });
+    fireEvent.change(within(dialog).getByLabelText(/مسئول کار/), { target: { value: "4" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    await waitFor(() => expect(mocks.detail?.open).toBe(true));
+    expect((mocks.detail?.reservation as { id: number }).id).toBe(12);
+    expect(screen.getByTestId("reservation-list").getAttribute("data-page")).toBe("2");
+    expect((screen.getByLabelText("شماره رزرو") as HTMLInputElement).value).toBe("R-123456");
+    expect(mocks.router.push).not.toHaveBeenCalled();
+    expect(mocks.apiRequest.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
+  it("creates the linked task through the same API and retains the created-tasks post-save destination", async () => {
+    const baseRequest = mocks.apiRequest.getMockImplementation();
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (path === "/admin/tasks/assignees") return Promise.resolve([{ id: 4, displayName: "مدیر آزمون" }]);
+      if (path === "/admin/tasks" && init?.method === "POST") return Promise.resolve({ id: 9 });
+      return baseRequest?.(path, init);
+    });
+    await openPage();
+    fireEvent.click(await screen.findByRole("button", { name: "ارجاع کار" }));
+    const dialog = await screen.findByRole("dialog", { name: "ایجاد کار" });
+    await waitFor(() => expect((within(dialog).getByLabelText("رزرو مرتبط") as HTMLSelectElement).value).toBe("12"));
+    fireEvent.change(within(dialog).getByLabelText(/عنوان/), { target: { value: "پیگیری" } });
+    fireEvent.change(within(dialog).getByLabelText(/مسئول کار/), { target: { value: "4" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ایجاد کار" }));
+    await waitFor(() => expect(mocks.router.push).toHaveBeenCalledWith("/admin/tasks?scope=created"));
+    const creates = mocks.apiRequest.mock.calls.filter(([path, init]) => path === "/admin/tasks" && init?.method === "POST");
+    expect(creates).toHaveLength(1);
+    expect(JSON.parse(creates[0][1].body).reservationId).toBe(12);
+  });
+
+  it("does not offer task assignment without ManageReservations", async () => {
+    mocks.permissions = ["ManagePayments"];
+    await openPage();
+    expect(mocks.detail?.onAssignTask).toBeUndefined();
+    expect(screen.queryByRole("button", { name: "ارجاع کار" })).toBeNull();
+    expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).startsWith("/admin/tasks"))).toBe(false);
   });
 
   it("opens a direct reservation-number link through the server search and existing details dialog", async () => {

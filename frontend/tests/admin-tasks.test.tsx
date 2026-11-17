@@ -77,6 +77,28 @@ describe("Admin tasks", () => {
     expect(screen.getByText("گزارش شیفت")).toBeTruthy();
   });
 
+  it("opens the existing created scope after saving a task from reservation details", async () => {
+    window.history.replaceState({}, "", "/admin/tasks?scope=created");
+    render(<AdminTasksPage />);
+    expect(await screen.findByText("گزارش شیفت")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ایجادشده توسط من" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("dialog", { name: "ایجاد کار" })).toBeNull();
+  });
+
+  it("cancels ordinary Tasks-page creation without saving or changing the selected scope", async () => {
+    render(<AdminTasksPage />);
+    await screen.findByText("پیگیری رزرو");
+    fireEvent.click(screen.getByRole("button", { name: "ایجاد کار" }));
+    const dialog = screen.getByRole("dialog", { name: "ایجاد کار" });
+    fireEvent.change(within(dialog).getByLabelText(/عنوان/), { target: { value: "لغو فرم" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    expect(screen.queryByRole("dialog", { name: "ایجاد کار" })).toBeNull();
+    expect(screen.getByRole("button", { name: "واگذارشده به من" }).getAttribute("aria-pressed")).toBe("true");
+    expect(mocks.request.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "ایجاد کار" }));
+    expect((screen.getByLabelText(/عنوان/) as HTMLInputElement).value).toBe("");
+  });
+
   it("loads history and submits a changed status with optional trimmed note", async () => {
     mocks.request.mockImplementation(async (path: string, init?: RequestInit) => {
       if (path === "/admin/tasks") return tasks;

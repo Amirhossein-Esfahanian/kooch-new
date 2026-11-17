@@ -28,6 +28,7 @@ import {
   type ReservationRefundPayload,
 } from "@/components/reservations/ReservationDetailsDialog";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
+import { AdminTaskCreateDialog } from "@/components/tasks/AdminTaskCreateDialog";
 import {
   apiRequest,
   ApiRequestError,
@@ -212,6 +213,7 @@ function AdminReservationsContent() {
   const [reservations, setReservations] = useState<ReservationTableItem[]>([]);
   const [selectedReservationState, setSelectedReservation] =
     useState<ReservationTableItem | null>(null);
+  const [taskReservationId, setTaskReservationId] = useState<number | null>(null);
   const [editingReservation, setEditingReservation] =
     useState<ReservationTableItem | null>(null);
   const [draftFilters, setDraftFilters] =
@@ -1295,7 +1297,7 @@ function AdminReservationsContent() {
           canAddInternalNote={canManageReservations}
           onAssignTask={canManageReservations ? (reservation) => {
             const id = reservation.reservationId ?? reservation.id;
-            if (id) router.push(`/admin/tasks?reservationId=${id}`);
+            if (id) setTaskReservationId(id);
           } : undefined}
           onViewVoucher={canManagePayments ? (reservation) => {
             const id = reservation.reservationId ?? reservation.id;
@@ -1326,9 +1328,15 @@ function AdminReservationsContent() {
               setManualPayments([]);
             }
           }}
-          open={Boolean(selectedReservationState)}
+          open={Boolean(selectedReservationState) && taskReservationId === null}
           reservation={selectedReservationState}
         />
+
+        {taskReservationId !== null && canManageReservations && <AdminTaskCreateDialog
+          initialReservationId={taskReservationId}
+          onClose={() => setTaskReservationId(null)}
+          onCreated={() => { router.push("/admin/tasks?scope=created"); }}
+        />}
 
         <ManualReservationDialog
           context="admin"
