@@ -670,6 +670,12 @@ export function ManualReservationDialog({
         : [];
   const nightsCount = daysBetween(draft.checkInDate, draft.checkOutDate);
   const selectedRoomCount = draft.roomIds.length + typeSelections.reduce((sum, selection) => sum + selection.quantity, 0);
+  const selectedRoomSummary = manualOptions.map(option => ({
+    roomTypeId: option.roomTypeId, name: option.name,
+    quantity: option.inventoryMode === "TypeBasedInventory"
+      ? toNonNegativeInt(draft.typeQuantities[option.roomTypeId] ?? "0")
+      : draft.roomIds.filter(id => rooms.find(room => String(room.roomId) === id)?.roomTypeId === option.roomTypeId).length,
+  })).filter(option => option.quantity > 0);
   const requestedRoomCount = toPositiveInt(draft.requestedRooms, 1);
   const selectedTypeIdsKey = [...new Set([
     ...draft.roomIds.map(id => selectableRooms.find(room => String(room.roomId) === id)?.roomTypeId),
@@ -1740,6 +1746,17 @@ export function ManualReservationDialog({
         footer={
           isWizard && createdOrder ? <KoochButton type="button" onClick={() => setDialogOpen(false)}>بستن</KoochButton>
           : isWizard ? <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            {wizardStep === 2 && <div className="grid w-full min-w-0 gap-1 text-sm">
+              <p role="status" aria-live="polite" className="font-semibold text-foreground">
+                {toPersianDigits(selectedRoomCount)} از {toPersianDigits(requestedRoomCount)} اتاق انتخاب شده
+              </p>
+              {selectedRoomSummary.length > 0 && <ul aria-label="خلاصه تخصیص اتاق‌ها" tabIndex={selectedRoomSummary.length > 4 ? 0 : undefined}
+                className="grid max-h-24 gap-1 overflow-y-auto text-xs text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                {selectedRoomSummary.map(option => <li className="break-words" key={option.roomTypeId}>
+                  {option.name} × {toPersianDigits(option.quantity)}
+                </li>)}
+              </ul>}
+            </div>}
             <KoochButton disabled={submitting} onClick={() => wizardStep === 1 ? setDialogOpen(false) : goToStep(wizardStep === 3 ? 2 : 1)} type="button" variant="outline">
               {wizardStep === 1 ? "انصراف" : "بازگشت"}
             </KoochButton>
@@ -2132,19 +2149,35 @@ export function ManualReservationDialog({
                 </div>}
 
                 {showRooms && <div className="grid gap-3 md:col-span-2" aria-busy={loadingRooms}>
-                  {isWizard && <p role="status" className="text-sm text-muted-foreground">
-                    تخصیص اتاق‌ها: {toPersianDigits(selectedRoomCount)} از {toPersianDigits(requestedRoomCount)} اتاق درخواستی
-                    {selectedRoomCount !== requestedRoomCount && "؛ مجموع انتخاب‌ها باید با تعداد درخواستی برابر باشد."}
-                  </p>}
-                  {isWizard && <div className="grid gap-3 sm:grid-cols-2">
-                    {manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option =>
-                      <KoochField key={option.roomTypeId} label={`تعداد واحد ${option.name}`}
-                        helperText={`${toPersianDigits(option.availableCount)} واحد موجود`}>
-                        <KoochInput type="number" min={0}
-                          max={Math.max(0, Math.min(option.availableCount, requestedRoomCount - selectedRoomCount + toNonNegativeInt(draft.typeQuantities[option.roomTypeId] ?? "0")))}
-                          value={draft.typeQuantities[option.roomTypeId] ?? "0"}
-                          onChange={event => updateTypeSelection(String(option.roomTypeId), event.target.value)} />
-                      </KoochField>)}
+                  {isWizard && <div className="grid gap-2">
+                    {manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option => {
+                      const quantity = toNonNegativeInt(draft.typeQuantities[option.roomTypeId] ?? "0");
+                      return <div key={option.roomTypeId} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
+                        <div className="grid min-w-0 gap-1">
+                          <p className="break-words text-sm font-semibold text-foreground">{option.name}</p>
+                          <p className="text-xs text-muted-foreground">{toPersianDigits(option.availableCount)} واحد موجود</p>
+                        </div>
+                        <div role="group" aria-label={`انتخاب ${option.name}`} className="flex shrink-0 items-center gap-2" dir="ltr">
+                          {quantity > 0 && <>
+                            <KoochButton type="button" size="icon" variant="outline" aria-label={`کاهش تعداد ${option.name}`}
+                              onClick={event => {
+                                const increase = event.currentTarget.parentElement?.querySelector<HTMLButtonElement>("[data-room-increase]");
+                                updateTypeSelection(String(option.roomTypeId), String(quantity - 1));
+                                if (quantity === 1) window.requestAnimationFrame(() => increase?.focus());
+                              }}>
+                              <span aria-hidden="true">−</span>
+                            </KoochButton>
+                            <output aria-label={`تعداد ${option.name}`} aria-live="polite" aria-atomic="true"
+                              className="min-w-6 text-center text-sm font-semibold tabular-nums">{toPersianDigits(quantity)}</output>
+                          </>}
+                          <KoochButton type="button" size="icon" variant="outline" data-room-increase aria-label={`افزایش تعداد ${option.name}`}
+                            disabled={!availabilityLoaded || loadingRooms || quantity >= option.availableCount || selectedRoomCount >= requestedRoomCount}
+                            onClick={() => updateTypeSelection(String(option.roomTypeId), String(quantity + 1))}>
+                            <span aria-hidden="true">+</span>
+                          </KoochButton>
+                        </div>
+                      </div>;
+                    })}
                   </div>}
                   {!isEditMode && !isWizard && <>
                     {!selectedPropertyId || !hasValidDateRange ? <p role="status" className="text-sm text-muted-foreground">ابتدا اقامتگاه و بازهٔ معتبر اقامت را انتخاب کنید.</p>
