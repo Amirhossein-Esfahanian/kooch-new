@@ -53,6 +53,7 @@ export type KoochDateRangePickerProps = BaseDatePickerProps & {
   dialogFooterClassName?: string;
   autoCommit?: boolean;
   combinedField?: boolean;
+  showCombinedFieldLabels?: boolean;
   fieldSize?: "standard" | "compact";
 };
 

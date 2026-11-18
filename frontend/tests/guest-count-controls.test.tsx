@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, it } from "vitest";
 import { GuestCountControls } from "@/components/GuestCountControls";
 import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
+import { installNativePopoverStub } from "./helpers/native-popover";
 
 function AdminCounts() {
   const [adults, setAdults] = useState(1);
@@ -49,4 +50,39 @@ it("retains search defaults, room count, clear bounds, Escape and focus restorat
   expect(trigger.textContent).toContain("۲ اتاق");
   fireEvent.keyDown(age, { key: "Escape" });
   expect(screen.queryByRole("combobox")).toBeNull(); expect(document.activeElement).toBe(trigger);
+});
+
+it("reuses the floating picker with bounded room totals and required blank ages outside the popover", () => {
+  installNativePopoverStub();
+  function ManualGuests() {
+    const [value, setValue] = useState<GuestSelectorValue<string>>({ rooms: 1, adults: 1, children: 0, childAges: [] });
+    return <GuestSelector value={value} onChange={setValue} floating maxRooms={2} maxAdults={2} maxChildren={2}
+      childAgesOutside requireChildAges defaultChildAge="" />;
+  }
+  render(<ManualGuests />);
+  const trigger = screen.getByRole("button", { name: /^مسافران:/ });
+  fireEvent.click(trigger);
+  const popup = screen.getByRole("group", { name: "انتخاب مسافران و اتاق‌ها" });
+  expect(popup.className).toContain("fixed");
+  expect(popup.getAttribute("popover")).toBe("manual");
+  expect(popup.getAttribute("dir")).toBe("rtl");
+  expect(popup.style.left).toBe("16px");
+  fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد اتاق" }));
+  expect((screen.getByRole("button", { name: "افزایش تعداد اتاق" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(trigger.textContent).toContain("۲ اتاق");
+  const addChild = screen.getByRole("button", { name: "افزایش کودک" });
+  addChild.focus(); fireEvent.click(addChild);
+  const age = screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement;
+  expect(popup.contains(age)).toBe(false);
+  expect(age.required).toBe(true); expect(age.value).toBe("");
+  expect(document.activeElement).toBe(addChild);
+  fireEvent.keyDown(addChild, { key: "Escape" });
+  expect(screen.queryByRole("group", { name: "انتخاب مسافران و اتاق‌ها" })).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getByRole("combobox", { name: "سن کودک ۱" })).toBe(age);
+  fireEvent.change(age, { target: { value: "0" } });
+  fireEvent.click(trigger);
+  expect(age.value).toBe("0");
+  fireEvent.pointerDown(document.body);
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
 });

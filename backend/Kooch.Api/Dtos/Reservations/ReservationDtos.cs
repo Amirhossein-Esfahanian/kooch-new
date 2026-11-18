@@ -437,6 +437,8 @@ public class ReservationPaymentLinkResponse
 public class ReservationPricePreviewRequest : IValidatableObject
 {
     public bool ForManualCreation { get; set; }
+    public IReadOnlyList<int> RoomIds { get; set; } = [];
+    public IReadOnlyList<ManualRoomTypeSelection> RoomTypeSelections { get; set; } = [];
     [Range(1, int.MaxValue)]
     public int PropertyId { get; set; }
 

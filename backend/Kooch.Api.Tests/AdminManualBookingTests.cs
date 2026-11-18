@@ -282,6 +282,58 @@ public sealed partial class AdminManualBookingTests
         Assert.Equal(600m, order.TotalAmount);
     }
 
+    [Fact]
+    public async Task ManualPreview_MixedTypesMatchCreationAllocationPricesAndOrder()
+    {
+        await using var h = await Setup();
+        h.DbContext.RoomTypes.Add(new RoomType { Id = 91, PropertyId = 10, Name = "Type based", Slug = "type-based",
+            IsActive = true, InventoryMode = InventoryMode.TypeBasedInventory, TotalInventory = 2,
+            MaxAdults = 2, MaxChildren = 1, BasePrice = 250 });
+        for (var date = h.CheckIn; date < h.CheckOut; date = date.AddDays(1))
+        {
+            h.DbContext.Availabilities.Add(new Availability
+                { RoomTypeId = 91, Date = date, AvailableCount = 2, Status = AvailabilityStatus.OnRequest });
+            h.DbContext.RoomDailyPrices.Add(new RoomDailyPrice
+                { RoomTypeId = 91, Date = date, GuestType = PricingGuestType.Iranian, BasePrice = 250 });
+        }
+        await h.DbContext.SaveChangesAsync();
+        var request = Request(h, 3);
+        request.RoomIds = [30];
+        request.RoomTypeSelections = [new() { RoomTypeId = 91, Quantity = 2 }];
+        request.Adults = 4;
+        var preview = await h.Service.PreviewManualBookingPriceAsync(new()
+        {
+            ForManualCreation = true, PropertyId = 10, RoomTypeId = 20,
+            RoomIds = request.RoomIds, RoomTypeSelections = request.RoomTypeSelections,
+            RoomCount = 3, Adults = 4, CheckInDate = h.CheckIn, CheckOutDate = h.CheckOut
+        });
+        Assert.Empty(await h.DbContext.BookingSessions.ToListAsync());
+        var created = await h.Service.CreateAsync(request, h.SuperAdmin);
+        var roomPrices = Assert.IsAssignableFrom<IReadOnlyList<ManualRoomPricePreview>>(preview.RoomPrices);
+        Assert.Equal(new[] { 200m, 500m, 500m }, roomPrices.Select(price => price.FinalAmount));
+        Assert.Equal(created.Reservations.Select(room => room.Adults), roomPrices.Select(room => room.Adults));
+        Assert.Equal(created.Reservations.Select(room => room.FinalAmount), roomPrices.Select(room => room.FinalAmount));
+        Assert.Equal(created.TotalAmount, preview.FinalAmount);
+        Assert.Equal(1200m, preview.FinalAmount);
+    }
+
+    [Theory]
+    [InlineData("count")]
+    [InlineData("property")]
+    [InlineData("duplicate")]
+    public async Task ManualPreview_RejectsInvalidExplicitSelectionsWithoutWrites(string invalid)
+    {
+        await using var h = await Setup();
+        var request = new ReservationPricePreviewRequest { ForManualCreation = true, PropertyId = 10, RoomTypeId = 20,
+            RoomIds = [30, 32], RoomCount = 2, Adults = 2, CheckInDate = h.CheckIn, CheckOutDate = h.CheckOut };
+        if (invalid == "count") request.RoomCount = 1;
+        if (invalid == "property") request.PropertyId = 999;
+        if (invalid == "duplicate") request.RoomIds = [30, 30];
+        await Assert.ThrowsAnyAsync<Exception>(() => h.Service.PreviewManualBookingPriceAsync(request));
+        Assert.Empty(await h.DbContext.BookingSessions.ToListAsync());
+        Assert.Empty(await h.DbContext.Reservations.ToListAsync());
+    }
+
     private static ReservationCreateRequest Request(ReservationTestHarness h, int count) => new()
     {
         PropertyId = 10, RoomTypeId = 20, RoomId = 30, RoomIds = new[] { 30, 32, 33 }.Take(count).ToArray(),

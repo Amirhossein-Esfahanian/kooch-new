@@ -466,7 +466,9 @@ public partial class ReservationService(
     public async Task<ReservationPricePreviewResponse> PreviewManualBookingPriceAsync(
         ReservationPricePreviewRequest request, CancellationToken cancellationToken = default)
     {
-        if (request.RoomCount == 1)
+        var hasManualSelections = request.ForManualCreation &&
+            (request.RoomIds?.Count > 0 || request.RoomTypeSelections?.Count > 0);
+        if (request.RoomCount == 1 && !hasManualSelections)
             return request.ForManualCreation
                 ? await pricingService.PreviewManualCreationPriceAsync(request, cancellationToken)
                 : await pricingService.PreviewReservationPriceAsync(request, cancellationToken);
@@ -476,17 +478,33 @@ public partial class ReservationService(
             throw new ArgumentException("Room count and child ages are invalid.");
         var property = await dbContext.Properties.AsNoTracking().SingleOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken)
             ?? throw new KeyNotFoundException("Property not found.");
-        var type = await dbContext.RoomTypes.AsNoTracking()
-            .SingleOrDefaultAsync(t => t.Id == request.RoomTypeId && t.PropertyId == property.Id && t.IsActive, cancellationToken)
-            ?? throw new KeyNotFoundException("Room type not found.");
-        var allocation = await AllocateManualGuestsAsync(property, Enumerable.Repeat(type, request.RoomCount).ToArray(),
+        RoomType[] types;
+        if (hasManualSelections)
+        {
+            var units = await ResolveManualUnitsAsync(new ReservationCreateRequest
+            {
+                RoomIds = request.RoomIds!, RoomTypeSelections = request.RoomTypeSelections!
+            }, property.Id, cancellationToken);
+            if (units.Length != request.RoomCount)
+                throw new ArgumentException("Room count must match the selected units.");
+            types = units.Select(unit => unit.RoomType).ToArray();
+        }
+        else
+        {
+            var type = await dbContext.RoomTypes.AsNoTracking()
+                .SingleOrDefaultAsync(t => t.Id == request.RoomTypeId && t.PropertyId == property.Id && t.IsActive, cancellationToken)
+                ?? throw new KeyNotFoundException("Room type not found.");
+            types = Enumerable.Repeat(type, request.RoomCount).ToArray();
+        }
+        var allocation = await AllocateManualGuestsAsync(property, types,
             request.Adults, request.ChildAges, cancellationToken);
         var prices = new List<ReservationPricePreviewResponse>();
-        foreach (var room in allocation)
+        for (var index = 0; index < allocation.Count; index++)
         {
+            var room = allocation[index];
             var perRoomRequest = new ReservationPricePreviewRequest
             {
-                PropertyId = property.Id, RoomTypeId = type.Id, RatePlanId = request.RatePlanId,
+                PropertyId = property.Id, RoomTypeId = types[index].Id, RatePlanId = request.RatePlanId,
                 CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate, RoomCount = 1,
                 Adults = room.Adults, Children = room.ChildAges.Count, ChildAges = room.ChildAges, GuestType = request.GuestType
             };
@@ -500,7 +518,7 @@ public partial class ReservationService(
         {
             RoomPrices = prices.Select(price => new ManualRoomPricePreview(
                 price.Adults, price.Children, price.FinalAmount, price.Currency)).ToArray(),
-            PropertyId = property.Id, RoomTypeId = type.Id, GuestType = request.GuestType,
+            PropertyId = property.Id, RoomTypeId = types[0].Id, GuestType = request.GuestType,
             CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
             NightsCount = request.CheckOutDate.DayNumber - request.CheckInDate.DayNumber, RoomCount = request.RoomCount,
             Adults = prices.Sum(price => price.Adults), Children = prices.Sum(price => price.Children), Currency = prices[0].Currency,

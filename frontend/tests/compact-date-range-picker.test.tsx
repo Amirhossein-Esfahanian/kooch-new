@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -87,6 +87,24 @@ function ControlledPicker({
 }
 
 describe("KoochCompactDateRangePicker", () => {
+  it("keeps Admin combined segment labels visible before and after selection without changing public defaults", () => {
+    const props = { mode: "range" as const, combinedField: true, fieldSize: "compact" as const,
+      showCombinedFieldLabels: true, labels: { start: "ورود", end: "خروج" }, onChange: vi.fn() };
+    const view = render(<KoochDatePicker {...props} value={{ startDate: null, endDate: null }} />);
+    let trigger = screen.getByRole("button", { name: /^ورود:/ });
+    expect(within(trigger).getByText("ورود")).toBeTruthy();
+    expect(within(trigger).getByText("خروج")).toBeTruthy();
+    expect(trigger.querySelectorAll("[data-date-label]")).toHaveLength(2);
+    view.rerender(<KoochDatePicker {...props} value={committedRange} />);
+    trigger = screen.getByRole("button", { name: /^ورود:/ });
+    expect(within(trigger).getByText("ورود")).toBeTruthy();
+    expect(within(trigger).getByText("خروج")).toBeTruthy();
+    expect(trigger.querySelector('[data-date-primary="start"]')?.textContent).toBeTruthy();
+    expect(trigger.querySelector('[data-date-primary="end"]')?.textContent).toBeTruthy();
+    view.rerender(<KoochCompactDateRangePicker value={committedRange} onChange={vi.fn()} />);
+    expect(document.querySelector("[data-date-label]")).toBeNull();
+  });
+
   it("keeps Admin compact dates keyboard-accessible and requires explicit confirmation", async () => {
     const onChange = vi.fn();
     render(<KoochDatePicker mode="range" combinedField fieldSize="compact" openOnDialog

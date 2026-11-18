@@ -74,6 +74,8 @@ export interface SharedDateRangePickerProps {
   openOnDialog?: boolean;
   /** @internal Render a single two-part range control. */
   combinedField?: boolean;
+  /** Keep segment labels visible in the combined control, including after selection. */
+  showCombinedFieldLabels?: boolean;
   /** @internal Commit and close as soon as the second date is selected. */
   autoCommit?: boolean;
   /** Keep the existing footer actions by default. */
@@ -267,6 +269,7 @@ export function SharedDateRangePicker({
   dialogBodyClassName = "",
   dialogFooterClassName = "",
   combinedField = false,
+  showCombinedFieldLabels = false,
   autoCommit = false,
   showFooterActions = true,
   loadHolidayData = true,
@@ -423,6 +426,7 @@ export function SharedDateRangePicker({
         >
           <CalendarFieldIcon type="in" />
           <span className={`grid min-w-0 ${compact ? "gap-0" : "gap-0.5"}`}>
+            {showCombinedFieldLabels && <span className="text-xs font-semibold text-muted-foreground" data-date-label="start">{text.start}</span>}
             {start ? (
               <>
                 <span
@@ -459,6 +463,7 @@ export function SharedDateRangePicker({
         >
           <CalendarFieldIcon type="out" />
           <span className={`grid min-w-0 ${compact ? "gap-0" : "gap-0.5"}`}>
+            {showCombinedFieldLabels && <span className="text-xs font-semibold text-muted-foreground" data-date-label="end">{text.end}</span>}
             {end ? (
               <>
                 <span

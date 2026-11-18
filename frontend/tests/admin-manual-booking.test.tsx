@@ -4,6 +4,7 @@ import { ManualReservationDialog } from "@/components/reservations/ManualReserva
 import { ManualOrderSettlement } from "@/components/reservations/ManualOrderSettlement";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
 import { ApiRequestError } from "@/lib/owner-api";
+import { installNativePopoverStub } from "./helpers/native-popover";
 
 const mocks = vi.hoisted(() => ({ api: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() }));
 vi.mock("@/lib/owner-api", async importOriginal => ({
@@ -19,6 +20,7 @@ vi.mock("@/components/KoochDatePicker", () => ({ KoochDatePicker: ({ onChange }:
   <button type="button" onClick={() => onChange({ startDate: "2035-02-05", endDate: "2035-02-07" })}>انتخاب تاریخ جدید</button></> }));
 
 beforeEach(() => {
+  installNativePopoverStub();
   vi.clearAllMocks();
   mocks.api.mockImplementation(async (path: string) => {
     if (path === "/admin/properties") return [{ id: 10, name: "اقامتگاه آزمون" }, { id: 11, name: "اقامتگاه دوم" }];
@@ -47,6 +49,37 @@ beforeEach(() => {
   });
 });
 
+it("uses the shared floating room/guest picker with required ages outside it and separate guest type", async () => {
+  render(<ManualReservationDialog context="admin" fixedPropertyId={10} onCreated={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
+  const wizard = await screen.findByRole("dialog", { name: "افزودن رزرو" });
+  expect(wizard.className).toContain("max-w-3xl");
+  const trigger = screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ });
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button", { name: "افزایش بزرگسال" })).toBeNull();
+  expect(screen.queryByLabelText("تعداد واحد")).toBeNull();
+  expect(screen.queryByRole("button", { name: "افزایش تعداد اتاق" })).toBeNull();
+  fireEvent.click(trigger);
+  const panel = screen.getByRole("group", { name: "انتخاب مسافران و اتاق‌ها" });
+  expect(panel.id).toBe(trigger.getAttribute("aria-controls"));
+  fireEvent.click(within(panel).getByRole("button", { name: "افزایش بزرگسال" }));
+  fireEvent.click(within(panel).getByRole("button", { name: "افزایش کودک" }));
+  const age = screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement;
+  expect(age.value).toBe(""); expect(age.required).toBe(true);
+  expect(panel.contains(age)).toBe(false);
+  expect(panel.contains(screen.getByLabelText("نوع مهمان"))).toBe(false);
+  age.focus();
+  fireEvent.keyDown(age, { key: "Escape" });
+  expect(screen.queryByRole("group", { name: "انتخاب مسافران و اتاق‌ها" })).toBeNull();
+  expect(screen.getByRole("combobox", { name: "سن کودک ۱" })).toBe(age);
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getByRole("dialog", { name: "افزودن رزرو" })).toBe(wizard);
+  expect(trigger.textContent).toContain("۲ بزرگسال، ۱ کودک");
+  fireEvent.change(age, { target: { value: "0" } });
+  fireEvent.click(trigger);
+  expect((screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement).value).toBe("0");
+});
+
 it("does not disguise a failed availability request as empty inventory", async () => {
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation((path: string, ...args: unknown[]) => path.startsWith("/admin/reservations/available-rooms")
@@ -60,6 +93,11 @@ it("does not disguise a failed availability request as empty inventory", async (
   expect(await screen.findByRole("button", { name: /^اتاق/ })).toBeTruthy();
   expect(screen.queryByText("Availability service unavailable")).toBeNull();
 });
+
+function openGuestCounts() {
+  const trigger = screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ });
+  if (trigger.getAttribute("aria-expanded") === "false") fireEvent.click(trigger);
+}
 
 async function openStay(onCreated = vi.fn(), fixedPropertyId: number | null = 10, onReviewCreatedReservation?: (id: number) => void,
   canReviewCreatedReservation = (_propertyId: number) => true, canReceive = false) {
@@ -75,8 +113,13 @@ async function openStay(onCreated = vi.fn(), fixedPropertyId: number | null = 10
   fireEvent.click(screen.getByRole("button", { name: "انتخاب مهمان" }));
   fireEvent.change(await screen.findByPlaceholderText("نام، موبایل یا ایمیل"), { target: { value: "آزمون" } });
   fireEvent.click(await screen.findByRole("button", { name: /مهمان آزمون/ }));
-  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسالان" }));
-  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسالان" }));
+  fireEvent.click(screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ }));
+  fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد اتاق" }));
+  fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد اتاق" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسال" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسال" }));
 }
 
 async function selectRooms() {
@@ -88,6 +131,64 @@ async function selectRooms() {
   fireEvent.click(rooms);
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
 }
+
+it("keeps required child ages visible and validates them while the counts panel is closed", async () => {
+  await openStay();
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
+  fireEvent.click(screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ }));
+  const next = screen.getByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement;
+  expect(next.disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "افزایش کودک" })).toBeNull();
+  fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۱" }), { target: { value: "0" } });
+  expect(next.disabled).toBe(false);
+  expect(mocks.api.mock.calls.some(([path]) => path === "/admin/reservations")).toBe(false);
+});
+
+it("allocates the requested total across named and TypeBased rooms with one authoritative mixed preview", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    const result = await original(path, ...args);
+    if (path.includes("available-rooms")) return { options: [{ ...result.options[0], rooms: result.options[0].rooms.slice(0, 1) },
+      { roomTypeId: 21, name: "سوئیت", inventoryMode: "TypeBasedInventory", availableCount: 2, bookingMode: "OnRequest", rooms: [] }], excluded: [] };
+    if (path.includes("effective-rules")) return { ...result, roomTypeId: Number(new URL(path, "http://test").searchParams.get("roomTypeId")) };
+    if (path === "/admin/reservations/price-preview") return { ...result, finalAmount: 1000,
+      roomPrices: [200, 400, 400].map(finalAmount => ({ adults: 1, children: 0, finalAmount, currency: "IRR" })) };
+    return result;
+  });
+  await openStay(vi.fn(), 10, undefined, undefined, true);
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  const named = await screen.findByRole("button", { name: /^اتاق/ });
+  fireEvent.click(named);
+  fireEvent.click(await screen.findByRole("button", { name: /انتخاب همه/ }));
+  fireEvent.click(named);
+  expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByRole("spinbutton", { name: "تعداد واحد سوئیت" }), { target: { value: "2" } });
+  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
+  const preview = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/price-preview").at(-1)!;
+  expect(JSON.parse(preview[1].body)).toMatchObject({ roomCount: 3, roomIds: [30], roomTypeSelections: [{ roomTypeId: 21, quantity: 2 }] });
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect(within(screen.getByRole("list", { name: "قیمت اتاق‌های انتخاب‌شده" })).getAllByRole("listitem")).toHaveLength(3);
+  expect(screen.queryByLabelText("ثبت دریافت کامل و تأیید رزرو")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  const payload = JSON.parse(mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")![1].body);
+  expect(payload).toMatchObject({ roomCount: 3, roomIds: [30], roomTypeSelections: [{ roomTypeId: 21, quantity: 2 }] });
+  expect(payload.status).toBeUndefined(); // Existing server derives each room's manual initial status.
+  expect(payload.receivedPayment).toBeUndefined();
+});
+
+it("changing the requested room total clears stale allocations and requires a matching new selection", async () => {
+  await openStay(); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "کاهش تعداد اتاق" }));
+  expect(screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ }).textContent).toContain("۲ اتاق");
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  await screen.findByText(/تخصیص اتاق‌ها: ۰ از ۲/);
+  expect(screen.queryByRole("heading", { name: "خلاصه قیمت" })).toBeNull();
+  expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
+});
 
 it("keeps API currency and amounts consistent from preview through creation and settlement despite a toman site label", async () => {
   const original = mocks.api.getMockImplementation()!;
@@ -327,8 +428,10 @@ it("shows real loading and ignores a late response for the previous dates", asyn
 it("revalidates occupancy/pricing after guest details change without discarding rooms", async () => {
   await openStay(); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
-  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسالان" }));
-  fireEvent.click(screen.getByRole("button", { name: "افزایش کودکان" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش بزرگسال" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
   expect((screen.getByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۱" }), { target: { value: "8" } });
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
@@ -365,7 +468,8 @@ it("preserves guests and eligible selections on Back and fresh date checks", asy
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false);
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
-  expect(screen.getByRole("status", { name: "بزرگسالان" }).textContent).toBe("۳");
+  openGuestCounts();
+  expect(screen.getByRole("status", { name: "بزرگسال" }).textContent).toBe("۳");
   fireEvent.click(screen.getByRole("button", { name: "انتخاب تاریخ جدید" }));
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
   await waitFor(() => expect(mocks.api.mock.calls.some(([path]) => path.includes("checkInDate=2035-02-05") && path.includes("checkOutDate=2035-02-07"))).toBe(true));
@@ -397,7 +501,8 @@ it("preserves all input after final submission fails", async () => {
   expect(screen.getByRole("region", { name: "خلاصه سفارش دستی" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
-  expect(screen.getByRole("status", { name: "بزرگسالان" }).textContent).toBe("۳");
+  openGuestCounts();
+  expect(screen.getByRole("status", { name: "بزرگسال" }).textContent).toBe("۳");
 });
 
 it("shows each server-provided room amount instead of dividing the order total", async () => {
@@ -422,16 +527,20 @@ it("preserves guest identity, type, adults, children and ages on property/date c
   await openStay(vi.fn(), null); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
   fireEvent.change(screen.getByLabelText("نوع مهمان"), { target: { value: "Foreign" } });
-  fireEvent.click(screen.getByRole("button", { name: "افزایش کودکان" }));
-  fireEvent.click(screen.getByRole("button", { name: "افزایش کودکان" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
+  openGuestCounts();
+  fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
   fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۱" }), { target: { value: "4" } });
   fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۲" }), { target: { value: "8" } });
   fireEvent.click(screen.getByRole("button", { name: /^اقامتگاه/ }));
   fireEvent.click(await screen.findByRole("button", { name: "اقامتگاه دوم" }));
   fireEvent.click(screen.getByRole("button", { name: "انتخاب تاریخ جدید" }));
-  expect(screen.getByRole("status", { name: "بزرگسالان" }).textContent).toBe("۳");
+  openGuestCounts();
+  expect(screen.getByRole("status", { name: "بزرگسال" }).textContent).toBe("۳");
   expect((screen.getByLabelText("نوع مهمان") as HTMLSelectElement).value).toBe("Foreign");
-  expect(screen.getByRole("status", { name: "کودکان" }).textContent).toBe("۲");
+  openGuestCounts();
+  expect(screen.getByRole("status", { name: "کودک" }).textContent).toBe("۲");
   expect((screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLInputElement).value).toBe("4");
   expect((screen.getByRole("combobox", { name: "سن کودک ۲" }) as HTMLInputElement).value).toBe("8");
   expect(screen.getByRole("button", { name: /مهمان آزمون/ })).toBeTruthy();
@@ -443,7 +552,7 @@ it("preserves guest identity, type, adults, children and ages on property/date c
   expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations")).toHaveLength(0);
 });
 
-it("retains only still-available selected rooms after a date change and re-prices that selection", async () => {
+it("retains eligible rooms but keeps the requested total when dates reduce named room availability", async () => {
   await openStay(); await selectRooms();
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
@@ -459,15 +568,10 @@ it("retains only still-available selected rooms after a date change and re-price
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
   fireEvent.click(screen.getByRole("button", { name: "انتخاب تاریخ جدید" }));
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
-  const preview = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/price-preview").at(-1)!;
-  expect(JSON.parse(preview[1].body)).toMatchObject({ roomCount: 2, checkInDate: "2035-02-05", adults: 3 });
-  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  const list = screen.getByRole("list", { name: "قیمت اتاق‌های انتخاب‌شده" });
-  expect(within(list).getAllByRole("listitem")).toHaveLength(2);
-  expect(list.textContent).toContain("اتاق 30");
-  expect(list.textContent).toContain("اتاق 33");
-  expect(list.textContent).not.toContain("اتاق 32");
+  await screen.findByText(/تخصیص اتاق‌ها: ۲ از ۳/);
+  expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(mocks.api.mock.calls.some(([path, options]) => path === "/admin/reservations/price-preview" &&
+    JSON.parse(options.body).checkInDate === "2035-02-05")).toBe(false);
 });
 
 it("ignores a failed request after switching properties and does not advance until the new check succeeds", async () => {
@@ -511,10 +615,9 @@ it("books TypeBased quantities without physical room IDs and keeps mixed missing
       reason: "MissingNightlyPricing", missingDates: ["2035-02-02"] }] }) : original(path, ...args));
   await openStay();
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  const type = await screen.findByLabelText("نوع اتاق (موجودی تعدادی)");
+  await screen.findByRole("spinbutton", { name: /تعداد واحد/ });
   expect(screen.getByText(/قیمت معتبر برای شب‌های/).textContent).toContain("۲۰۳۵-۰۲-۰۲");
   expect(screen.queryByRole("button", { name: /^اتاق/ })).toBeNull();
-  fireEvent.change(type, { target: { value: "20" } });
   fireEvent.change(screen.getByRole("spinbutton", { name: /تعداد واحد/ }), { target: { value: "4" } });
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByRole("spinbutton", { name: /تعداد واحد/ }), { target: { value: "3" } });
@@ -562,7 +665,7 @@ it("preserves a TypeBased quantity on unchanged navigation and revalidates it wh
   });
   await openStay();
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  fireEvent.change(await screen.findByLabelText("نوع اتاق (موجودی تعدادی)"), { target: { value: "20" } });
+  await screen.findByRole("spinbutton", { name: /تعداد واحد/ });
   fireEvent.change(screen.getByRole("spinbutton", { name: /تعداد واحد/ }), { target: { value: "3" } });
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
@@ -570,12 +673,12 @@ it("preserves a TypeBased quantity on unchanged navigation and revalidates it wh
   expect((await screen.findByRole("spinbutton", { name: /تعداد واحد/ }) as HTMLInputElement).value).toBe("3");
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
   fireEvent.click(screen.getByRole("button", { name: "انتخاب تاریخ جدید" }));
-  expect(screen.getByRole("status", { name: "بزرگسالان" }).textContent).toBe("۳");
+  openGuestCounts();
+  expect(screen.getByRole("status", { name: "بزرگسال" }).textContent).toBe("۳");
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
   expect((await screen.findByRole("spinbutton", { name: /تعداد واحد/ }) as HTMLInputElement).value).toBe("2");
-  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
-  const preview = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/price-preview").at(-1)!;
-  expect(JSON.parse(preview[1].body)).toMatchObject({ checkInDate: "2035-02-05", roomCount: 2, adults: 3 });
+  expect(screen.getByText(/تخصیص اتاق‌ها: ۲ از ۳/)).toBeTruthy();
+  expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 it("keeps Step 2 compact before selection, with no second date request or large empty panels", async () => {
@@ -647,7 +750,7 @@ it("preserves success after a list-refresh failure, without resubmit or fallback
   fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
   const next = await screen.findByRole("button", { name: "انتخاب اتاق‌ها" });
   expect((next as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByRole("status", { name: "بزرگسالان" }).textContent).toBe("۱");
+  expect(screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ }).getAttribute("aria-expanded")).toBe("false");
 });
 
 it("does not offer approval review without property permission even when the status transition is valid", async () => {

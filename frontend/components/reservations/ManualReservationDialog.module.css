@@ -1,7 +1,10 @@
 .wizard.wizard { height: auto; max-height: calc(100dvh - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)); }
 .body.body { padding: 1rem; overscroll-behavior: contain; }
 .footer.footer { padding: 0.75rem 1rem; }
+.guestFields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: .75rem; }
+.guestHint { grid-column: 1 / -1; }
 @media (max-width: 639px) {
-  .wizard.wizard { width: calc(100vw - 1rem); }
+  .wizard.wizard { width: calc(100vw - 2rem); }
   .body.body { padding: 0.75rem; }
+  .guestFields { grid-template-columns: minmax(0, 1fr); }
 }

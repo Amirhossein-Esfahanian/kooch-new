@@ -25,21 +25,22 @@ export function GuestCounter({ title, subtitle, value, min, max, onChange, compa
 }
 
 export function GuestCountControls({ adults, childrenCount, childAges, onAdultsChange, onChildrenChange,
-  onChildAgeChange, maxAdults, maxChildren, compact = false, requireChildAges = false, adultLabel = "بزرگسال", childLabel = "کودک", children }: {
+  onChildAgeChange, maxAdults, maxChildren, compact = false, requireChildAges = false, adultLabel = "بزرگسال", childLabel = "کودک", children, sections = "all" }: {
   adults: number; childrenCount: number; childAges: readonly (number | string)[];
   onAdultsChange: (value: number) => void; onChildrenChange: (value: number) => void;
   onChildAgeChange: (index: number, value: string) => void; maxAdults?: number; maxChildren?: number;
   compact?: boolean; requireChildAges?: boolean; adultLabel?: string; childLabel?: string; children?: ReactNode;
+  sections?: "all" | "counts" | "ages";
 }) {
   return <>
-    <div className={compact ? "grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3" : undefined}>
+    {sections !== "ages" && <div className={compact ? `grid min-w-0 gap-3 ${sections === "counts" ? "" : "sm:grid-cols-2 xl:grid-cols-3"}` : undefined}>
       <GuestCounter title={adultLabel} subtitle={compact ? undefined : "۱۸ سال به بالا"} value={adults} min={1}
         max={maxAdults} onChange={onAdultsChange} compact={compact} />
       <GuestCounter title={childLabel} subtitle={compact ? undefined : "۰ تا ۱۷ سال"} value={childrenCount} min={0}
         max={maxChildren} onChange={onChildrenChange} compact={compact} />
       {children}
-    </div>
-    {childrenCount > 0 && <div className={compact ? "grid gap-2" : "mt-4 border-t border-border pt-4"}>
+    </div>}
+    {sections !== "counts" && childrenCount > 0 && <div className={compact ? "grid gap-2" : "mt-4 border-t border-border pt-4"}>
       <p className={compact ? "text-xs text-muted-foreground" : "mb-3 text-sm leading-6 text-muted-foreground"}>برای محاسبه دقیق، سن کودک را وارد کنید.</p>
       <div className={compact ? "grid gap-3 sm:grid-cols-2 lg:grid-cols-3" : "grid gap-3"}>
         {childAges.map((age, index) => <label className="grid gap-2 text-sm font-bold text-foreground" key={index}>

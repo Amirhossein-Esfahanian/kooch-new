@@ -5,7 +5,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import { KoochAlert } from "@/components/KoochAlert";
 import { NumberedSteps } from "@/components/NumberedSteps";
-import { GuestCountControls } from "@/components/GuestCountControls";
+import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
 import styles from "./ManualReservationDialog.module.css";
 import { ManualReceiptFields } from "./ManualReceiptFields";
 import { KoochBadge } from "@/components/KoochBadge";
@@ -66,7 +66,8 @@ type ReservationDraft = {
   propertyId: string;
   roomTypeId: string;
   roomIds: string[];
-  typeQuantity: string;
+  typeQuantities: Record<string, string>;
+  requestedRooms: string;
   guestId: string;
   guestSearch: string;
   checkInDate: string;
@@ -84,7 +85,7 @@ export type ReservationMutationPayload = {
     method: string; referenceNumber: string | null; paymentDate: string;
   };
   reviewedRoomAmounts?: number[];
-  status: ReservationTableStatus;
+  status?: ReservationTableStatus;
   propertyId: number;
   roomTypeId: number;
   roomId: number;
@@ -206,7 +207,8 @@ const initialDraft: ReservationDraft = {
   propertyId: "",
   roomTypeId: "",
   roomIds: [],
-  typeQuantity: "0",
+  typeQuantities: {},
+  requestedRooms: "1",
   guestId: "",
   guestSearch: "",
   checkInDate: "",
@@ -273,7 +275,8 @@ function reservationDraft(
       fixedPropertyId?.toString() ?? reservation.propertyId?.toString() ?? "",
     roomTypeId: reservation.roomTypeId?.toString() ?? "",
     roomIds: reservation.roomId ? [reservation.roomId.toString()] : [],
-    typeQuantity: "0",
+    typeQuantities: {},
+    requestedRooms: "1",
     guestId: reservation.guestId?.toString() ?? "",
     guestSearch: reservation.guestName ?? reservation.guestFullName ?? "",
     checkInDate: reservation.checkInDate ?? "",
@@ -548,6 +551,7 @@ export function ManualReservationDialog({
   const [pricePreviewError, setPricePreviewError] = useState("");
   const [effectiveRules, setEffectiveRules] =
     useState<EffectiveReservationRules | null>(null);
+  const [wizardRules, setWizardRules] = useState<EffectiveReservationRules[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState("");
   const [loadingRooms, setLoadingRooms] = useState(false);
@@ -645,16 +649,19 @@ export function ManualReservationDialog({
       ...rooms,
     ];
   }, [effectiveRules, isEditMode, reservation, rooms]);
-  const selectedTypeOption = isWizard ? manualOptions.find(option =>
-    option.inventoryMode === "TypeBasedInventory" && String(option.roomTypeId) === draft.roomTypeId) : undefined;
-  const selectedRoomNames = selectedTypeOption
-    ? Array.from({ length: Math.min(100, toNonNegativeInt(draft.typeQuantity)) }, (_, index) => `${selectedTypeOption.name} — واحد ${toPersianDigits(index + 1)}`)
-    : draft.roomIds
+  const selectedTypeOptions = isWizard ? manualOptions.filter(option =>
+    option.inventoryMode === "TypeBasedInventory" && toNonNegativeInt(draft.typeQuantities[option.roomTypeId] ?? "0") > 0) : [];
+  const typeSelections = selectedTypeOptions.map(option => ({ roomTypeId: option.roomTypeId,
+    quantity: toNonNegativeInt(draft.typeQuantities[option.roomTypeId]) }));
+  const typeSelectionsKey = JSON.stringify(typeSelections);
+  const selectedRoomNames = draft.roomIds
     .map(
       (id) =>
         selectableRooms.find((room) => room.roomId.toString() === id)?.roomName,
     )
-    .filter(Boolean);
+    .filter(Boolean).concat(selectedTypeOptions.flatMap(option =>
+      Array.from({ length: Math.min(100, toNonNegativeInt(draft.typeQuantities[option.roomTypeId])) },
+        (_, index) => `${option.name} — واحد ${toPersianDigits(index + 1)}`)));
   const confirmationRoomNames =
     selectedRoomNames.length > 0
       ? selectedRoomNames
@@ -662,7 +669,12 @@ export function ManualReservationDialog({
         ? [reservation.roomName]
         : [];
   const nightsCount = daysBetween(draft.checkInDate, draft.checkOutDate);
-  const selectedRoomCount = selectedTypeOption ? toNonNegativeInt(draft.typeQuantity) : draft.roomIds.length;
+  const selectedRoomCount = draft.roomIds.length + typeSelections.reduce((sum, selection) => sum + selection.quantity, 0);
+  const requestedRoomCount = toPositiveInt(draft.requestedRooms, 1);
+  const selectedTypeIdsKey = [...new Set([
+    ...draft.roomIds.map(id => selectableRooms.find(room => String(room.roomId) === id)?.roomTypeId),
+    ...typeSelections.map(selection => selection.roomTypeId),
+  ].filter((id): id is number => id !== undefined))].join(",");
   const selectedRoomBaseAdults = effectiveRules
     ? effectiveRules.baseCapacity * selectedRoomCount
     : 1;
@@ -691,11 +703,13 @@ export function ManualReservationDialog({
   const selectedRoomIdsKey = draft.roomIds.join(",");
   const childAgesKey = draft.childAges.join(",");
   const hasValidDateRange = nightsCount > 0;
-  const hasOnRequest = selectedTypeOption ? selectedTypeOption.bookingMode === "OnRequest" : draft.roomIds.some(
+  const hasOnRequest = selectedTypeOptions.some(option => option.bookingMode === "OnRequest") || draft.roomIds.some(
     (id) =>
       selectableRooms.find((room) => room.roomId.toString() === id)
         ?.bookingMode === "OnRequest",
   );
+  const hasInstant = selectedTypeOptions.some(option => option.bookingMode === "Instant") || draft.roomIds.some(
+    id => selectableRooms.find(room => String(room.roomId) === id)?.bookingMode === "Instant");
   const defaultCreateStatus: ReservationTableStatus = hasOnRequest
     ? "PendingApproval"
     : "Pending";
@@ -732,6 +746,7 @@ export function ManualReservationDialog({
       ? pricePreview.finalAmount + existingManualAdjustment
       : (reservation?.finalAmount ?? reservation?.totalPrice ?? null);
   const stayInputsValid = Boolean(selectedPropertyId && draft.guestId && hasValidDateRange &&
+    /^\d+$/.test(draft.requestedRooms) && Number(draft.requestedRooms) >= 1 && requestedRoomCount <= 100 &&
     /^\d+$/.test(draft.adults) && Number(draft.adults) >= 1 && Number(draft.adults) <= 100 &&
     /^\d+$/.test(draft.children) && Number(draft.children) <= 100 &&
     draft.childAges.length === Number(draft.children) &&
@@ -739,10 +754,11 @@ export function ManualReservationDialog({
   const roomPrices = pricePreview
     ? selectedRoomCount === 1 ? [pricePreview] : pricePreview.roomPrices ?? []
     : [];
+  const selectionsValid = draft.roomIds.every(id => rooms.some(room => String(room.roomId) === id)) &&
+    Object.entries(draft.typeQuantities).every(([id, quantity]) => /^\d+$/.test(quantity) &&
+      (Number(quantity) === 0 || selectedTypeOptions.some(option => String(option.roomTypeId) === id && Number(quantity) <= option.availableCount)));
   const roomsReady = Boolean(availabilityLoaded && !loadingRooms && !availabilityError &&
-    selectedRoomCount > 0 && (selectedTypeOption
-      ? /^\d+$/.test(draft.typeQuantity) && selectedRoomCount <= Math.min(100, selectedTypeOption.availableCount)
-      : draft.roomIds.every(id => rooms.some(room => String(room.roomId) === id))) &&
+    selectedRoomCount === requestedRoomCount && selectionsValid &&
     effectiveRules && !rulesLoading && !rulesError && pricePreview && !pricePreviewLoading && !pricePreviewError &&
     roomPrices.length === selectedRoomCount && roomPrices.every(price => price.currency === pricePreview.currency) &&
     Math.abs(roomPrices.reduce((sum, price) => sum + price.finalAmount, 0) - pricePreview.finalAmount) < 0.01);
@@ -809,13 +825,12 @@ export function ManualReservationDialog({
       setExcludedOptions(response.excluded);
       setAvailabilityLoaded(true);
       setDraft(current => {
-        const previousType = response.options.find(option => option.inventoryMode === "TypeBasedInventory" &&
-          String(option.roomTypeId) === current.roomTypeId);
-        if (previousType && Number(current.typeQuantity) > 0) return { ...current, roomIds: [],
-          typeQuantity: String(Math.min(Number(current.typeQuantity), previousType.availableCount)) };
         const roomIds = current.roomIds.filter(id => availableRooms.some(room => String(room.roomId) === id));
-        const roomTypeId = availableRooms.find(room => String(room.roomId) === roomIds[0])?.roomTypeId.toString() ?? "";
-        return { ...current, roomIds, roomTypeId, typeQuantity: "0" };
+        const typeQuantities = Object.fromEntries(response.options.filter(option => option.inventoryMode === "TypeBasedInventory")
+          .map(option => [option.roomTypeId, String(Math.min(toNonNegativeInt(current.typeQuantities[option.roomTypeId] ?? "0"), option.availableCount))]));
+        const roomTypeId = availableRooms.find(room => String(room.roomId) === roomIds[0])?.roomTypeId.toString()
+          ?? Object.keys(typeQuantities).find(id => Number(typeQuantities[id]) > 0) ?? "";
+        return { ...current, roomIds, roomTypeId, typeQuantities };
       });
       if (response.options.length > 0) goToStep(2);
     } catch (caught) {
@@ -1037,7 +1052,28 @@ export function ManualReservationDialog({
     });
   }
 
+  function updateWizardGuests(value: GuestSelectorValue<string>) {
+    const roomsChanged = String(value.rooms) !== draft.requestedRooms;
+    if (roomsChanged) invalidateWizardAvailability();
+    setDraft(current => ({ ...current, requestedRooms: String(value.rooms), adults: String(value.adults),
+      children: String(value.children), childAges: value.childAges,
+      ...(roomsChanged ? { roomIds: [], roomTypeId: "", typeQuantities: {} } : {}) }));
+  }
+
   function updateSelectedRooms(value: string[]) {
+    if (isWizard) {
+      if (value.length + typeSelections.reduce((sum, selection) => sum + selection.quantity, 0) > requestedRoomCount) {
+        toast.error("تعداد اتاق‌های انتخابی نباید از تعداد درخواستی بیشتر باشد.");
+        return;
+      }
+      pricePreviewAbortRef.current?.abort();
+      pricePreviewRequestId.current += 1;
+      setPricePreview(null);
+      setDraft(current => ({ ...current, roomIds: value,
+        roomTypeId: rooms.find(room => String(room.roomId) === value[0])?.roomTypeId.toString()
+          ?? String(typeSelections[0]?.roomTypeId ?? "") }));
+      return;
+    }
     if (
       value.length === draft.roomIds.length &&
       value.every((roomId, index) => roomId === draft.roomIds[index])
@@ -1071,7 +1107,7 @@ export function ManualReservationDialog({
       ...current,
       roomTypeId,
       roomIds,
-      typeQuantity: "0",
+      typeQuantities: {},
       adults:
         isWizard ? current.adults : roomIds.length > 0
           ? Math.max(1, roomBaseCapacity).toString()
@@ -1081,15 +1117,19 @@ export function ManualReservationDialog({
     }));
   }
 
-  function updateTypeSelection(roomTypeId: string, quantity = "1") {
-    if (roomTypeId !== draft.roomTypeId || draft.roomIds.length > 0) rulesAbortRef.current?.abort();
+  function updateTypeSelection(roomTypeId: string, quantity: string) {
+    rulesAbortRef.current?.abort();
     pricePreviewAbortRef.current?.abort();
     pricePreviewRequestId.current += 1;
-    if (roomTypeId !== draft.roomTypeId || draft.roomIds.length > 0) setEffectiveRules(null);
+    setEffectiveRules(null);
     setPricePreview(null);
     setPricePreviewError("");
-    setDraft(current => ({ ...current, roomIds: [], roomTypeId,
-      typeQuantity: roomTypeId ? quantity : "0" }));
+    setDraft(current => {
+      const typeQuantities = { ...current.typeQuantities, [roomTypeId]: quantity };
+      return { ...current, typeQuantities,
+        roomTypeId: rooms.find(room => String(room.roomId) === current.roomIds[0])?.roomTypeId.toString()
+          ?? Object.keys(typeQuantities).find(id => Number(typeQuantities[id]) > 0) ?? "" };
+    });
   }
 
   function updateGuestDraft(field: keyof GuestDraft, value: string) {
@@ -1183,22 +1223,21 @@ export function ManualReservationDialog({
     let cancelled = false;
     const controller = new AbortController();
     rulesAbortRef.current = controller;
-    const query = new URLSearchParams({
-      propertyId: selectedPropertyId.toString(),
-      roomTypeId: draft.roomTypeId,
-    });
+    const typeIds = isWizard ? selectedTypeIdsKey.split(",") : [draft.roomTypeId];
     setRulesLoading(true);
     setRulesError("");
-    apiRequest<EffectiveReservationRules>(
-      `/admin/reservations/effective-rules?${query.toString()}`,
+    Promise.all(typeIds.map(roomTypeId => apiRequest<EffectiveReservationRules>(
+      `/admin/reservations/effective-rules?${new URLSearchParams({ propertyId: selectedPropertyId.toString(), roomTypeId })}`,
       { signal: controller.signal },
-    )
-      .then((rules) => {
+    )))
+      .then((allRules) => {
         if (cancelled || controller.signal.aborted) return;
+        const rules = allRules[0];
         const shouldResetAdults =
           pendingRoomCapacityResetRef.current === draft.roomTypeId;
         pendingRoomCapacityResetRef.current = null;
         setEffectiveRules(rules);
+        setWizardRules(allRules);
         if (isWizard) return;
         setDraft((current) => {
           const roomCount = current.roomIds.length;
@@ -1241,6 +1280,7 @@ export function ManualReservationDialog({
     context,
     dialogOpen,
     draft.roomTypeId,
+    selectedTypeIdsKey,
     isLockedEdit,
     selectedPropertyId,
     selectedRoomCount,
@@ -1374,7 +1414,7 @@ export function ManualReservationDialog({
       draft.roomTypeId &&
       hasValidDateRange &&
       selectedRoomCount > 0 &&
-      (!selectedTypeOption || /^\d+$/.test(draft.typeQuantity) && selectedRoomCount <= Math.min(100, selectedTypeOption.availableCount)) &&
+      (!isWizard || selectionsValid && selectedRoomCount === requestedRoomCount) &&
       !hasIncompleteChildAges,
     );
 
@@ -1427,7 +1467,7 @@ export function ManualReservationDialog({
           ),
           roomCount: selectedRoomCount,
           guestType: draft.guestType,
-          ...(isWizard ? { forManualCreation: true } : {}),
+          ...(isWizard ? { forManualCreation: true, roomIds: draft.roomIds.map(Number), roomTypeSelections: typeSelections } : {}),
         }),
       },
     )
@@ -1471,8 +1511,9 @@ export function ManualReservationDialog({
     selectedPropertyId,
     selectedRoomCount,
     selectedRoomIdsKey,
-    draft.typeQuantity,
-    selectedTypeOption,
+    typeSelectionsKey,
+    selectionsValid,
+    requestedRoomCount,
     rulesError,
     rulesLoading,
     isWizard,
@@ -1591,7 +1632,7 @@ export function ManualReservationDialog({
       }
 
       const payload = buildReservationMutationPayload({
-            status: selectedStatus,
+            ...(isWizard && hasOnRequest && hasInstant ? {} : { status: selectedStatus }),
             propertyId: selectedPropertyId,
             roomTypeId: Number(draft.roomTypeId),
             roomId: Number(draft.roomIds[0] ?? 0),
@@ -1606,7 +1647,7 @@ export function ManualReservationDialog({
             ),
             roomCount: selectedRoomCount,
             roomIds: draft.roomIds.map((id) => Number(id)),
-            ...(selectedTypeOption ? { roomTypeSelections: [{ roomTypeId: selectedTypeOption.roomTypeId, quantity: selectedRoomCount }] } : {}),
+            ...(isWizard ? { roomTypeSelections: typeSelections } : {}),
             guestType: draft.guestType,
             notes: draft.notes.trim() || null,
           });
@@ -1742,7 +1783,7 @@ export function ManualReservationDialog({
         }
         onOpenChange={next => { if (!submitting) setDialogOpen(next); }}
         open={dialogOpen}
-        size="lg"
+        size={isWizard ? "md" : "lg"}
         className={isWizard ? styles.wizard : undefined}
         bodyClassName={isWizard ? styles.body : undefined}
         footerClassName={isWizard ? styles.footer : undefined}
@@ -1900,6 +1941,17 @@ export function ManualReservationDialog({
                   >
                     {rulesError}
                   </KoochAlert>
+                ) : isWizard && wizardRules.length > 1 ? (
+                  <div className="grid gap-3 md:col-span-2 sm:grid-cols-2">
+                    {wizardRules.map(rules => {
+                      const summary = buildChildRuleSummary(rules, previewCurrencyLabel);
+                      return <section key={rules.roomTypeId} className="rounded-lg border border-border bg-muted p-3 text-xs leading-6">
+                        <h3 className="font-bold">{manualOptions.find(option => option.roomTypeId === rules.roomTypeId)?.name}</h3>
+                        <p>{summary.freeChildText}</p><p>{summary.childPricingText}</p>
+                        <p>{summary.adultText}</p><p>{summary.roomText}</p>
+                      </section>;
+                    })}
+                  </div>
                 ) : childRuleSummary ? (
                   <div className="rounded-lg border border-border bg-muted p-4 text-sm text-foreground md:col-span-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1932,7 +1984,7 @@ export function ManualReservationDialog({
                         if (value === draft.propertyId) return;
                         if (isWizard) {
                           invalidateWizardAvailability();
-                          setDraft(current => ({ ...current, propertyId: value, roomTypeId: "", roomIds: [], typeQuantity: "0" }));
+                          setDraft(current => ({ ...current, propertyId: value, roomTypeId: "", roomIds: [], typeQuantities: {} }));
                           return;
                         }
                         availabilityAbortRef.current?.abort();
@@ -2012,7 +2064,7 @@ export function ManualReservationDialog({
                   required
                 >
                   <KoochDatePicker
-                    {...(isWizard ? { combinedField: true, fieldSize: "compact" as const } : {})}
+                    {...(isWizard ? { combinedField: true, showCombinedFieldLabels: true, fieldSize: "compact" as const } : {})}
                     labels={{ start: "ورود", end: "خروج" }}
                     mode="range"
                     minDate={isEditMode ? undefined : todayIsoDate()}
@@ -2053,8 +2105,8 @@ export function ManualReservationDialog({
                         adults: isWizard ? current.adults : initialDraft.adults,
                       }));
                     }}
-                    placeholderEnd=""
-                    placeholderStart=""
+                    placeholderEnd={isWizard ? "انتخاب تاریخ" : ""}
+                    placeholderStart={isWizard ? "انتخاب تاریخ" : ""}
                     showFieldLabels
                     value={{
                       startDate: draft.checkInDate || null,
@@ -2080,20 +2132,20 @@ export function ManualReservationDialog({
                 </div>}
 
                 {showRooms && <div className="grid gap-3 md:col-span-2" aria-busy={loadingRooms}>
-                  {isWizard && manualOptions.some(option => option.inventoryMode === "TypeBasedInventory") && <>
-                    <KoochField label="نوع اتاق (موجودی تعدادی)">
-                      <KoochSelect value={selectedTypeOption ? draft.roomTypeId : ""}
-                        onChange={event => updateTypeSelection(event.target.value)}>
-                        <option value="">انتخاب نوع اتاق / اتاق‌های نام‌دار</option>
-                        {manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option =>
-                          <option key={option.roomTypeId} value={option.roomTypeId}>{option.name} — {toPersianDigits(option.availableCount)} واحد موجود</option>)}
-                      </KoochSelect>
-                    </KoochField>
-                    {selectedTypeOption && <KoochField label="تعداد واحد" required>
-                      <KoochInput type="number" min={1} max={Math.min(100, selectedTypeOption.availableCount)}
-                        value={draft.typeQuantity} onChange={event => updateTypeSelection(draft.roomTypeId, event.target.value)} />
-                    </KoochField>}
-                  </>}
+                  {isWizard && <p role="status" className="text-sm text-muted-foreground">
+                    تخصیص اتاق‌ها: {toPersianDigits(selectedRoomCount)} از {toPersianDigits(requestedRoomCount)} اتاق درخواستی
+                    {selectedRoomCount !== requestedRoomCount && "؛ مجموع انتخاب‌ها باید با تعداد درخواستی برابر باشد."}
+                  </p>}
+                  {isWizard && <div className="grid gap-3 sm:grid-cols-2">
+                    {manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option =>
+                      <KoochField key={option.roomTypeId} label={`تعداد واحد ${option.name}`}
+                        helperText={`${toPersianDigits(option.availableCount)} واحد موجود`}>
+                        <KoochInput type="number" min={0}
+                          max={Math.max(0, Math.min(option.availableCount, requestedRoomCount - selectedRoomCount + toNonNegativeInt(draft.typeQuantities[option.roomTypeId] ?? "0")))}
+                          value={draft.typeQuantities[option.roomTypeId] ?? "0"}
+                          onChange={event => updateTypeSelection(String(option.roomTypeId), event.target.value)} />
+                      </KoochField>)}
+                  </div>}
                   {!isEditMode && !isWizard && <>
                     {!selectedPropertyId || !hasValidDateRange ? <p role="status" className="text-sm text-muted-foreground">ابتدا اقامتگاه و بازهٔ معتبر اقامت را انتخاب کنید.</p>
                       : loadingRooms ? <p role="status" className="text-sm text-muted-foreground">در حال دریافت اتاق‌های موجود…</p>
@@ -2103,11 +2155,13 @@ export function ManualReservationDialog({
                       </KoochAlert>
                       : availabilityLoaded && rooms.length === 0 ? <p role="status" className="text-sm text-muted-foreground">برای این اقامتگاه و بازهٔ اقامت، اتاق قابل رزرو موجود نیست. تاریخ‌ها را تغییر دهید.</p> : null}
                   </>}
-                  {(!isWizard || !selectedTypeOption && rooms.length > 0) && <KoochField label="اتاق" required>
+                  {(!isWizard || rooms.length > 0) && <KoochField label="اتاق" required>
                   {!isEditMode ? (
                     <KoochMultiSelect
                       disabled={!selectedPropertyId || loadingRooms || nightsCount <= 0 || Boolean(availabilityError) || !availabilityLoaded || rooms.length === 0}
-                      options={roomOptions.filter(option => !draft.roomIds.length ||
+                      options={isWizard ? roomOptions.map(option => ({ ...option,
+                        disabled: !draft.roomIds.includes(String(option.value)) && selectedRoomCount >= requestedRoomCount }))
+                        : roomOptions.filter(option => !draft.roomIds.length ||
                         rooms.find(room => room.roomId.toString() === String(option.value))?.roomTypeId.toString() === draft.roomTypeId)}
                       value={draft.roomIds}
                       onChange={value => updateSelectedRooms(value.map(String))}
@@ -2140,22 +2194,20 @@ export function ManualReservationDialog({
                   />
                   )}
                   </KoochField>}
-                  {!isEditMode && draft.roomIds.length > 0 && <p className="text-xs text-muted-foreground">انتخاب چند اتاق از همین نوع اتاق ممکن است؛ برای تغییر نوع، انتخاب‌ها را پاک کنید.</p>}
+                  {!isEditMode && !isWizard && draft.roomIds.length > 0 && <p className="text-xs text-muted-foreground">انتخاب چند اتاق از همین نوع اتاق ممکن است؛ برای تغییر نوع، انتخاب‌ها را پاک کنید.</p>}
                 </div>}
 
-                {isWizard && showStay && <div className="grid min-w-0 gap-3 md:col-span-2">
-                  <GuestCountControls compact requireChildAges adultLabel="بزرگسالان" childLabel="کودکان"
-                    adults={toPositiveInt(draft.adults, 1)} childrenCount={toNonNegativeInt(draft.children)}
-                    childAges={normalizeChildAges(draft.childAges, toNonNegativeInt(draft.children))}
-                    maxAdults={100} maxChildren={100}
-                    onAdultsChange={value => updateDraft("adults", String(value))}
-                    onChildrenChange={value => updateChildren(String(value))}
-                    onChildAgeChange={updateChildAge}>
+                {isWizard && showStay && <div className={`${styles.guestFields} md:col-span-2`}>
+                  <GuestSelector label="مهمانان و اتاق‌ها" floating childAgesOutside requireChildAges defaultChildAge=""
+                    maxRooms={100} maxAdults={100} maxChildren={100}
+                    controlClassName="h-[52px] w-full px-3 text-right text-xs"
+                    value={{ rooms: requestedRoomCount, adults: toPositiveInt(draft.adults, 1),
+                      children: toNonNegativeInt(draft.children), childAges: draft.childAges }}
+                    onChange={updateWizardGuests} />
                     <KoochField label="نوع مهمان"><KoochSelect value={draft.guestType} onChange={event => {
                       invalidateWizardAvailability(); updateDraft("guestType", event.target.value as PricingGuestType);
                     }}><option value="Iranian">ایرانی</option><option value="Foreign">خارجی</option></KoochSelect></KoochField>
-                  </GuestCountControls>
-                  <p className="text-xs text-muted-foreground">سن واقعی هر کودک لازم است؛ ظرفیت و هزینه در انتخاب اتاق بررسی می‌شود.</p>
+                  <p className={`${styles.guestHint} text-xs text-muted-foreground`}>سن واقعی هر کودک لازم است؛ ظرفیت و هزینه در انتخاب اتاق بررسی می‌شود.</p>
                 </div>}
                 {showStay && !isWizard && <KoochField
                   helperText={
