@@ -391,7 +391,7 @@ export function BookingCheckoutContent({
       dir="rtl"
     >
       <div
-        className={`${isDialog ? "" : "sticky top-[var(--header-height)] z-40"} h-[var(--checkout-timeline-height)] w-full border-b border-border bg-[var(--property-search-background)] shadow-sm`}
+        className={`${isDialog ? "" : "sticky top-[var(--header-height)] z-40"} min-h-[var(--checkout-timeline-height)] w-full border-b border-border bg-[var(--property-search-background)] shadow-sm`}
         data-testid="checkout-sticky-timeline"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6">

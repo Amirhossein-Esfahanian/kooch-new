@@ -217,13 +217,13 @@ describe("multi-step booking checkout skeleton", () => {
     expect(timeline.className).toContain("top-[var(--header-height)]");
     expect(timeline.className).toContain("z-40");
     expect(timeline.className).toContain("bg-[var(--property-search-background)]");
-    expect(stepper.querySelector("ol")?.className).toContain("flex");
-    for (const step of ["stay", "information", "review"]) {
-      const group = screen.getByTestId(`checkout-step-group-${step}`);
-      expect(group.className).toContain("items-center");
-      expect(group.className).toContain("shrink-0");
-    }
-    expect(screen.getAllByTestId("checkout-step-connector")).toHaveLength(2);
+    expect(timeline.className).toContain("min-h-[var(--checkout-timeline-height)]");
+    expect(stepper.querySelector("ol")?.getAttribute("dir")).toBe("rtl");
+    expect(within(stepper).getAllByRole("listitem").map(item => item.dataset.state))
+      .toEqual(["completed", "active", "upcoming"]);
+    expect(Array.from(stepper.querySelectorAll("[data-step-connector]")).map(connector => connector.getAttribute("data-step-connector")))
+      .toEqual(["completed", "upcoming"]);
+    expect(stepper.querySelector("svg")).toBeNull();
     expect(screen.getByRole("heading", { name: "اطلاعات رزروکننده" })).toBeTruthy();
     expect(screen.getByLabelText(/شماره موبایل/)).toBeTruthy();
     expect(screen.getByText("اتاق شاه‌نشین")).toBeTruthy();
