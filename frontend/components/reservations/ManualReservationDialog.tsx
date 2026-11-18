@@ -2198,7 +2198,7 @@ export function ManualReservationDialog({
                 </div>}
 
                 {isWizard && showStay && <div className={`${styles.guestFields} md:col-span-2`}>
-                  <GuestSelector label="مهمانان و اتاق‌ها" floating childAgesOutside requireChildAges defaultChildAge=""
+                  <GuestSelector label="مهمانان و اتاق‌ها" floating requireChildAges defaultChildAge=""
                     maxRooms={100} maxAdults={100} maxChildren={100}
                     controlClassName="h-[52px] w-full px-3 text-right text-xs"
                     value={{ rooms: requestedRoomCount, adults: toPositiveInt(draft.adults, 1),

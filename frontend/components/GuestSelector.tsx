@@ -82,9 +82,12 @@ export function GuestSelector<Age extends number | string = number>({
       setPosition({ top, left, maxHeight });
     };
     updatePosition();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updatePosition);
+    observer?.observe(popup);
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
     return () => {
+      observer?.disconnect();
       if (popup.isConnected) popup.hidePopover?.();
       window.removeEventListener("resize", updatePosition);
       window.removeEventListener("scroll", updatePosition, true);

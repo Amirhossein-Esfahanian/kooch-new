@@ -52,12 +52,12 @@ it("retains search defaults, room count, clear bounds, Escape and focus restorat
   expect(screen.queryByRole("combobox")).toBeNull(); expect(document.activeElement).toBe(trigger);
 });
 
-it("reuses the floating picker with bounded room totals and required blank ages outside the popover", () => {
+it("keeps required child ages inside the floating picker without closing it or opening an age dropdown", () => {
   installNativePopoverStub();
   function ManualGuests() {
     const [value, setValue] = useState<GuestSelectorValue<string>>({ rooms: 1, adults: 1, children: 0, childAges: [] });
     return <GuestSelector value={value} onChange={setValue} floating maxRooms={2} maxAdults={2} maxChildren={2}
-      childAgesOutside requireChildAges defaultChildAge="" />;
+      requireChildAges defaultChildAge="" />;
   }
   render(<ManualGuests />);
   const trigger = screen.getByRole("button", { name: /^مسافران:/ });
@@ -73,16 +73,20 @@ it("reuses the floating picker with bounded room totals and required blank ages 
   const addChild = screen.getByRole("button", { name: "افزایش کودک" });
   addChild.focus(); fireEvent.click(addChild);
   const age = screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement;
-  expect(popup.contains(age)).toBe(false);
+  expect(popup.contains(age)).toBe(true);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  expect(age.className).toContain("h-11");
   expect(age.required).toBe(true); expect(age.value).toBe("");
   expect(document.activeElement).toBe(addChild);
+  fireEvent.change(age, { target: { value: "0" } });
+  expect(age.value).toBe("0");
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
   fireEvent.keyDown(addChild, { key: "Escape" });
   expect(screen.queryByRole("group", { name: "انتخاب مسافران و اتاق‌ها" })).toBeNull();
   expect(document.activeElement).toBe(trigger);
-  expect(screen.getByRole("combobox", { name: "سن کودک ۱" })).toBe(age);
-  fireEvent.change(age, { target: { value: "0" } });
+  expect(screen.queryByRole("combobox", { name: "سن کودک ۱" })).toBeNull();
   fireEvent.click(trigger);
-  expect(age.value).toBe("0");
+  expect((screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement).value).toBe("0");
   fireEvent.pointerDown(document.body);
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
 });

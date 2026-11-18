@@ -49,7 +49,7 @@ beforeEach(() => {
   });
 });
 
-it("uses the shared floating room/guest picker with required ages outside it and separate guest type", async () => {
+it("keeps required child ages inside the floating picker and guest type separate", async () => {
   render(<ManualReservationDialog context="admin" fixedPropertyId={10} onCreated={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
   const wizard = await screen.findByRole("dialog", { name: "افزودن رزرو" });
@@ -66,16 +66,17 @@ it("uses the shared floating room/guest picker with required ages outside it and
   fireEvent.click(within(panel).getByRole("button", { name: "افزایش کودک" }));
   const age = screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement;
   expect(age.value).toBe(""); expect(age.required).toBe(true);
-  expect(panel.contains(age)).toBe(false);
+  expect(panel.contains(age)).toBe(true);
+  expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  fireEvent.change(age, { target: { value: "0" } });
   expect(panel.contains(screen.getByLabelText("نوع مهمان"))).toBe(false);
   age.focus();
   fireEvent.keyDown(age, { key: "Escape" });
   expect(screen.queryByRole("group", { name: "انتخاب مسافران و اتاق‌ها" })).toBeNull();
-  expect(screen.getByRole("combobox", { name: "سن کودک ۱" })).toBe(age);
+  expect(screen.queryByRole("combobox", { name: "سن کودک ۱" })).toBeNull();
   expect(document.activeElement).toBe(trigger);
   expect(screen.getByRole("dialog", { name: "افزودن رزرو" })).toBe(wizard);
   expect(trigger.textContent).toContain("۲ بزرگسال، ۱ کودک");
-  fireEvent.change(age, { target: { value: "0" } });
   fireEvent.click(trigger);
   expect((screen.getByRole("combobox", { name: "سن کودک ۱" }) as HTMLSelectElement).value).toBe("0");
 });
@@ -132,7 +133,7 @@ async function selectRooms() {
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
 }
 
-it("keeps required child ages visible and validates them while the counts panel is closed", async () => {
+it("keeps child-age validation active when the floating picker closes", async () => {
   await openStay();
   openGuestCounts();
   fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
@@ -140,6 +141,8 @@ it("keeps required child ages visible and validates them while the counts panel 
   const next = screen.getByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement;
   expect(next.disabled).toBe(true);
   expect(screen.queryByRole("button", { name: "افزایش کودک" })).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "سن کودک ۱" })).toBeNull();
+  openGuestCounts();
   fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۱" }), { target: { value: "0" } });
   expect(next.disabled).toBe(false);
   expect(mocks.api.mock.calls.some(([path]) => path === "/admin/reservations")).toBe(false);
