@@ -527,6 +527,7 @@ export type KoochMultiSelectProps = FieldStateProps &
     searchPlaceholder?: string;
     emptyText?: string;
     selectAllText?: string;
+    showBulkActions?: boolean;
     clearText?: string;
     disabled?: boolean;
     className?: string;
@@ -914,6 +915,7 @@ export function KoochMultiSelect({
   searchPlaceholder = "جستجو...",
   emptyText = "موردی پیدا نشد.",
   selectAllText = "انتخاب همه",
+  showBulkActions = true,
   clearText = "حذف همه",
   disabled = false,
   className = "",
@@ -1065,7 +1067,7 @@ export function KoochMultiSelect({
               />
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-b border-border p-2">
+            {showBulkActions && <div className="flex items-center justify-between gap-2 border-b border-border p-2">
               <button
                 className="text-xs font-bold text-primary hover:underline disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={disabled || enabledOptions.length === 0}
@@ -1083,7 +1085,7 @@ export function KoochMultiSelect({
               >
                 {clearText}
               </button>
-            </div>
+            </div>}
 
             <div className="max-h-64 overflow-y-auto p-1.5">
               {filteredOptions.length === 0 ? (

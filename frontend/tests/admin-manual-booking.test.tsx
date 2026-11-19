@@ -133,6 +133,12 @@ async function selectRooms() {
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
 }
 
+async function selectType(name: string) {
+  const picker = await screen.findByRole("button", { name: "نوع اتاق" });
+  if (picker.getAttribute("aria-expanded") !== "true") fireEvent.click(picker);
+  fireEvent.click(await screen.findByRole("button", { name: new RegExp(`^${name}`) }));
+}
+
 it("shows one prerequisite hint without field errors and clears it when step one is complete", async () => {
   render(<ManualReservationDialog context="admin" onCreated={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
@@ -198,7 +204,7 @@ it("allocates the requested total across named and TypeBased rooms with one auth
   fireEvent.click(await screen.findByRole("button", { name: /انتخاب همه/ }));
   fireEvent.click(named);
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت" }));
+  await selectType("سوئیت");
   fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت" }));
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
   const preview = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/price-preview").at(-1)!;
@@ -670,7 +676,7 @@ it("does not advance a closed/reopened wizard from a previous availability respo
   expect((next as HTMLButtonElement).disabled).toBe(true);
 });
 
-it("selects a single unit without auto-selection, restores the plus at zero and preserves it across steps", async () => {
+it("selects a single type without auto-selection, removes it with trash and preserves it across steps", async () => {
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
     if (path.includes("available-rooms")) return { options: [{ roomTypeId: 20, name: "دبل",
@@ -685,24 +691,31 @@ it("selects a single unit without auto-selection, restores the plus at zero and 
     fireEvent.click(screen.getByRole("button", { name: "کاهش بزرگسال" }));
   }
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  const increase = await screen.findByRole("button", { name: "افزایش تعداد دبل" });
-  const row = screen.getByRole("group", { name: "انتخاب دبل" });
-  expect(within(row).getAllByRole("button")).toHaveLength(1);
+  await screen.findByRole("button", { name: "نوع اتاق" });
+  expect(screen.queryByRole("group", { name: "انتخاب دبل" })).toBeNull();
   expect(screen.queryByRole("spinbutton")).toBeNull();
   expect(screen.queryByRole("status", { name: "تعداد دبل" })).toBeNull();
   expect(screen.queryByRole("list", { name: "خلاصه تخصیص اتاق‌ها" })).toBeNull();
   expect(screen.getByText("۰ از ۱ اتاق انتخاب شده")).toBeTruthy();
   expect(mocks.api.mock.calls.some(([path]) => path === "/admin/reservations/price-preview")).toBe(false);
-  fireEvent.click(increase);
+  fireEvent.click(screen.getByRole("button", { name: "نوع اتاق" }));
+  const option = await screen.findByRole("button", { name: /^دبل/ });
+  expect(option.textContent).toContain("ظرفیت پایه: نامشخص");
+  expect(option.textContent).toContain("نفر اضافه: نامشخص");
+  expect(option.textContent).toContain("۲ واحد موجود");
+  await selectType("دبل");
+  const increase = screen.getByRole("button", { name: "افزایش تعداد دبل" });
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
+  expect(screen.getByRole("button", { name: /^دبل/ }).textContent).toContain("ظرفیت پایه: ۲ نفر");
+  expect(screen.getByRole("button", { name: /^دبل/ }).textContent).toContain("نفر اضافه: ۰ نفر");
   expect((increase as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole("list", { name: "خلاصه تخصیص اتاق‌ها" }).textContent).toBe("دبل × ۱");
-  fireEvent.click(screen.getByRole("button", { name: "کاهش تعداد دبل" }));
-  expect(within(row).getAllByRole("button")).toHaveLength(1);
+  fireEvent.click(screen.getByRole("button", { name: "حذف دبل" }));
+  expect(screen.queryByRole("group", { name: "انتخاب دبل" })).toBeNull();
   expect(screen.queryByRole("status", { name: "تعداد دبل" })).toBeNull();
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
-  await waitFor(() => expect(document.activeElement).toBe(increase));
-  fireEvent.click(increase);
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "نوع اتاق" })));
+  await selectType("دبل");
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
@@ -718,6 +731,7 @@ it("limits mixed type counters by inventory and the shared requested total and s
     if (path.includes("available-rooms")) return { options: [
       { roomTypeId: 20, name: "دبل", inventoryMode: "TypeBasedInventory", availableCount: 1, bookingMode: "Instant", rooms: [] },
       { roomTypeId: 21, name: "سوئیت", inventoryMode: "TypeBasedInventory", availableCount: 3, bookingMode: "Instant", rooms: [] },
+      { roomTypeId: 22, name: "تک", inventoryMode: "TypeBasedInventory", availableCount: 2, bookingMode: "Instant", rooms: [] },
     ], excluded: [] };
     const result = await original(path, ...args);
     if (path.includes("effective-rules")) return { ...result, roomTypeId: Number(new URL(path, "http://test").searchParams.get("roomTypeId")) };
@@ -725,16 +739,22 @@ it("limits mixed type counters by inventory and the shared requested total and s
   });
   await openStay();
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  const double = await screen.findByRole("button", { name: "افزایش تعداد دبل" }) as HTMLButtonElement;
-  const suite = screen.getByRole("button", { name: "افزایش تعداد سوئیت" }) as HTMLButtonElement;
-  fireEvent.click(double);
+  await selectType("دبل");
+  const double = screen.getByRole("button", { name: "افزایش تعداد دبل" }) as HTMLButtonElement;
   expect(double.disabled).toBe(true);
-  expect(suite.disabled).toBe(false);
-  fireEvent.click(suite);
+  const search = screen.getByPlaceholderText("جستجوی نوع اتاق...");
+  expect(screen.getByRole("button", { name: "نوع اتاق" }).getAttribute("aria-expanded")).toBe("true");
+  expect(screen.queryByRole("button", { name: "انتخاب همه" })).toBeNull();
+  fireEvent.change(search, { target: { value: "سوئیت" } });
+  expect(screen.getByRole("status", { name: "تعداد دبل" }).textContent).toBe("۱");
+  await selectType("سوئیت");
+  const suite = screen.getByRole("button", { name: "افزایش تعداد سوئیت" }) as HTMLButtonElement;
   expect(screen.getByText("۲ از ۳ اتاق انتخاب شده")).toBeTruthy();
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(suite);
   expect(double.disabled).toBe(true); expect(suite.disabled).toBe(true);
+  fireEvent.change(search, { target: { value: "تک" } });
+  expect((screen.getByRole("button", { name: /^تک/ }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(suite); // Disabled controls must not over-allocate.
   expect(screen.getByRole("status", { name: "تعداد سوئیت" }).textContent).toBe("۲");
   const summary = screen.getByRole("list", { name: "خلاصه تخصیص اتاق‌ها" });
@@ -743,6 +763,18 @@ it("limits mixed type counters by inventory and the shared requested total and s
   fireEvent.click(screen.getByRole("button", { name: "کاهش تعداد سوئیت" }));
   expect(suite.disabled).toBe(false);
   expect(screen.getByText("۲ از ۳ اتاق انتخاب شده")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "کاهش تعداد سوئیت" })).toBeNull();
+  fireEvent.change(search, { target: { value: "سوئیت" } });
+  expect(screen.getByRole("button", { name: /^سوئیت/ }).getAttribute("aria-pressed")).toBe("true");
+  fireEvent.click(screen.getByRole("button", { name: "حذف سوئیت" }));
+  expect(screen.queryByRole("group", { name: "انتخاب سوئیت" })).toBeNull();
+  expect(screen.getByRole("button", { name: /^سوئیت/ }).getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByText("۱ از ۳ اتاق انتخاب شده")).toBeTruthy();
+  fireEvent.change(search, { target: { value: "دبل" } });
+  fireEvent.click(screen.getByRole("button", { name: /^دبل/ }));
+  expect(screen.queryByRole("group", { name: "انتخاب دبل" })).toBeNull();
+  expect(screen.getByRole("button", { name: /^دبل/ }).getAttribute("aria-pressed")).toBe("false");
+  expect(screen.getByText("۰ از ۳ اتاق انتخاب شده")).toBeTruthy();
 });
 
 it("books TypeBased quantities without physical room IDs and keeps mixed missing-price feedback visible", async () => {
@@ -753,10 +785,10 @@ it("books TypeBased quantities without physical room IDs and keeps mixed missing
       reason: "MissingNightlyPricing", missingDates: ["2035-02-02"] }] }) : original(path, ...args));
   await openStay();
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  await screen.findByRole("button", { name: "افزایش تعداد سوئیت تعدادی" });
+  await screen.findByRole("button", { name: "نوع اتاق" });
   expect(screen.getByText(/قیمت معتبر برای شب‌های/).textContent).toContain("۲۰۳۵-۰۲-۰۲");
   expect(screen.queryByRole("button", { name: /^اتاق/ })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت تعدادی" }));
+  await selectType("سوئیت تعدادی");
   fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت تعدادی" }));
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت تعدادی" }));
@@ -805,8 +837,8 @@ it("preserves a TypeBased quantity on unchanged navigation and revalidates it wh
   });
   await openStay();
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
-  await screen.findByRole("button", { name: "افزایش تعداد سوئیت تعدادی" });
-  for (let index = 0; index < 3; index++) fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت تعدادی" }));
+  await selectType("سوئیت تعدادی");
+  for (let index = 0; index < 2; index++) fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد سوئیت تعدادی" }));
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
   fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));

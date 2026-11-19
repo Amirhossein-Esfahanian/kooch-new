@@ -3,6 +3,7 @@
 .footer.footer { padding: 0.75rem 1rem; }
 .guestFields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: .75rem; }
 .guestHint { grid-column: 1 / -1; }
+.typePickerPanel :global(.truncate) { white-space: normal; overflow: visible; }
 .guestRow { display: flex; flex-wrap: wrap; align-items: start; gap: .5rem; }
 .guestRow > :first-child { flex: 1 1 15rem; min-width: 0; }
 .guestRow > button { flex: 0 0 auto; }

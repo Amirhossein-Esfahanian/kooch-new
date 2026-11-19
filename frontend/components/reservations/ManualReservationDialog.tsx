@@ -10,6 +10,7 @@ import styles from "./ManualReservationDialog.module.css";
 import { ManualReceiptFields } from "./ManualReceiptFields";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
+import { KoochIcon } from "@/components/KoochIcon";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
@@ -2162,8 +2163,41 @@ export function ManualReservationDialog({
                 </div>}
 
                 {showRooms && <div className="grid gap-3 md:col-span-2" aria-busy={loadingRooms}>
-                  {isWizard && <div className="grid gap-2">
-                    {manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option => {
+                  {isWizard && manualOptions.some(option => option.inventoryMode === "TypeBasedInventory") && <div className="grid gap-2">
+                    <KoochField label="نوع اتاق">
+                      <KoochMultiSelect
+                        id="manual-room-types"
+                        options={manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option => {
+                          const rules = wizardRules.find(rule => rule.roomTypeId === option.roomTypeId);
+                          return { value: String(option.roomTypeId), label: option.name, searchText: option.name,
+                            description: <span className="flex flex-wrap gap-x-3 gap-y-1">
+                              <span>ظرفیت پایه: {rules ? `${toPersianDigits(rules.baseCapacity)} نفر` : "نامشخص"}</span>
+                              <span>نفر اضافه: {rules ? `${toPersianDigits(rules.extraGuestAllowed ? rules.maxExtraGuests : 0)} نفر` : "نامشخص"}</span>
+                              <span>{toPersianDigits(option.availableCount)} واحد موجود</span>
+                            </span>,
+                            disabled: !selectedTypeOptions.some(selected => selected.roomTypeId === option.roomTypeId) &&
+                              (option.availableCount <= 0 || selectedRoomCount >= requestedRoomCount),
+                          };
+                        })}
+                        value={selectedTypeOptions.map(option => String(option.roomTypeId))}
+                        onChange={values => {
+                          const selected = new Set(values.map(String));
+                          for (const option of manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory")) {
+                            const id = String(option.roomTypeId);
+                            const quantity = toNonNegativeInt(draft.typeQuantities[id] ?? "0");
+                            if (!selected.has(id) && quantity > 0) updateTypeSelection(id, "0");
+                            else if (selected.has(id) && quantity === 0 && option.availableCount > 0 && selectedRoomCount < requestedRoomCount)
+                              updateTypeSelection(id, "1");
+                          }
+                        }}
+                        showBulkActions={false}
+                        placeholder="انتخاب نوع اتاق"
+                        searchPlaceholder="جستجوی نوع اتاق..."
+                        emptyText="نوع اتاقی با این جستجو پیدا نشد."
+                        dropdownClassName={styles.typePickerPanel}
+                      />
+                    </KoochField>
+                    {selectedTypeOptions.map(option => {
                       const quantity = toNonNegativeInt(draft.typeQuantities[option.roomTypeId] ?? "0");
                       return <div key={option.roomTypeId} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
                         <div className="grid min-w-0 gap-1">
@@ -2172,13 +2206,12 @@ export function ManualReservationDialog({
                         </div>
                         <div role="group" aria-label={`انتخاب ${option.name}`} className="flex shrink-0 items-center gap-2" dir="ltr">
                           {quantity > 0 && <>
-                            <KoochButton type="button" size="icon" variant="outline" aria-label={`کاهش تعداد ${option.name}`}
-                              onClick={event => {
-                                const increase = event.currentTarget.parentElement?.querySelector<HTMLButtonElement>("[data-room-increase]");
+                            <KoochButton type="button" size="icon" variant="outline" aria-label={quantity === 1 ? `حذف ${option.name}` : `کاهش تعداد ${option.name}`}
+                              onClick={() => {
                                 updateTypeSelection(String(option.roomTypeId), String(quantity - 1));
-                                if (quantity === 1) window.requestAnimationFrame(() => increase?.focus());
+                                if (quantity === 1) window.requestAnimationFrame(() => document.getElementById("manual-room-types")?.focus());
                               }}>
-                              <span aria-hidden="true">−</span>
+                              {quantity === 1 ? <KoochIcon name="delete" className="!h-4 !w-4" /> : <span aria-hidden="true">−</span>}
                             </KoochButton>
                             <output aria-label={`تعداد ${option.name}`} aria-live="polite" aria-atomic="true"
                               className="min-w-6 text-center text-sm font-semibold tabular-nums">{toPersianDigits(quantity)}</output>
