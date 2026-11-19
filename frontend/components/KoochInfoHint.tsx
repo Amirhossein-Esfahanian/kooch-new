@@ -3,6 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import { KoochButton } from "@/components/KoochButton";
+import { useAnchoredPopover } from "@/lib/use-anchored-popover";
 
 export type KoochInfoHintProps = {
   content: ReactNode;
@@ -11,6 +12,7 @@ export type KoochInfoHintProps = {
   popoverClassName?: string;
   openOnHoverFocus?: boolean;
   constrainToViewport?: boolean;
+  floating?: boolean;
 };
 
 export function KoochInfoHint({
@@ -20,10 +22,13 @@ export function KoochInfoHint({
   popoverClassName = "",
   openOnHoverFocus = false,
   constrainToViewport = false,
+  floating = false,
 }: KoochInfoHintProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [floatingPosition] = useAnchoredPopover(open && floating, triggerRef, popoverRef);
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [position, setPosition] = useState<CSSProperties>({});
   const generatedId = useId();
@@ -31,7 +36,7 @@ export function KoochInfoHint({
 
   useEffect(() => () => { if (hoverTimer.current) clearTimeout(hoverTimer.current); }, []);
   useLayoutEffect(() => {
-    if (!open || !constrainToViewport) return;
+    if (!open || !constrainToViewport || floating) return;
     const update = () => {
       const anchor = rootRef.current?.getBoundingClientRect();
       const panel = popoverRef.current?.getBoundingClientRect();
@@ -45,7 +50,7 @@ export function KoochInfoHint({
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
     return () => { window.removeEventListener("resize", update); window.removeEventListener("scroll", update, true); };
-  }, [open, constrainToViewport]);
+  }, [open, constrainToViewport, floating]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,13 +64,19 @@ export function KoochInfoHint({
     }
 
     document.addEventListener("pointerdown", handlePointerDown);
-    const handleEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    if (openOnHoverFocus) document.addEventListener("keydown", handleEscape);
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (floating) {
+        event.preventDefault(); event.stopPropagation(); triggerRef.current?.focus();
+      }
+      setOpen(false);
+    };
+    if (openOnHoverFocus || floating) document.addEventListener("keydown", handleEscape, floating);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown);
-      if (openOnHoverFocus) document.removeEventListener("keydown", handleEscape);
+      if (openOnHoverFocus || floating) document.removeEventListener("keydown", handleEscape, floating);
     };
-  }, [open, openOnHoverFocus]);
+  }, [open, openOnHoverFocus, floating]);
 
   return (
     <div
@@ -84,11 +95,15 @@ export function KoochInfoHint({
       onBlur={openOnHoverFocus ? event => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       } : undefined}
-      onKeyDown={openOnHoverFocus ? event => {
-        if (event.key === "Escape" && open) { event.preventDefault(); event.stopPropagation(); setOpen(false); }
+      onKeyDown={openOnHoverFocus || floating ? event => {
+        if (event.key === "Escape" && open) {
+          event.preventDefault(); event.stopPropagation(); setOpen(false);
+          if (floating) triggerRef.current?.focus();
+        }
       } : undefined}
     >
       <KoochButton
+        ref={triggerRef}
         aria-controls={popoverId}
         aria-expanded={open}
         aria-describedby={open && openOnHoverFocus ? popoverId : undefined}
@@ -115,7 +130,10 @@ export function KoochInfoHint({
           className={`absolute right-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-border bg-popover p-3 text-right text-xs font-normal leading-6 text-popover-foreground shadow-lg ${popoverClassName}`.trim()}
           id={popoverId}
           ref={popoverRef}
-          style={constrainToViewport ? position : undefined}
+          popover={floating ? "manual" : undefined}
+          style={floating ? { position: "fixed", inset: "auto", margin: 0, top: floatingPosition?.top ?? 0,
+            left: floatingPosition?.left ?? 0, maxHeight: floatingPosition?.maxHeight, overflowY: "auto",
+            visibility: floatingPosition ? "visible" : "hidden" } : constrainToViewport ? position : undefined}
           role="note"
         >
           {content}

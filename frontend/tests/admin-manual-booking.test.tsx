@@ -283,6 +283,15 @@ it("reviews localized dates with click-only mode information instead of a read-o
   expect(info.getAttribute("aria-expanded")).toBe("false");
   fireEvent.click(info);
   expect(screen.getByText(/آماده‌سازی برای پرداخت، اقدام جداگانه‌ای است/)).toBeTruthy();
+  const infoPanel = screen.getByRole("note");
+  expect(infoPanel.getAttribute("popover")).toBe("manual");
+  expect(screen.getByRole("dialog", { name: "افزودن رزرو" }).contains(infoPanel)).toBe(true);
+  fireEvent.keyDown(screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }), { key: "Escape" });
+  expect(screen.queryByRole("note")).toBeNull();
+  expect(document.activeElement).toBe(info);
+  expect(screen.getByRole("dialog", { name: "افزودن رزرو" })).toBeTruthy();
+  fireEvent.click(info, { detail: 0 }); // Native keyboard activation produces a zero-detail click.
+  expect(screen.getByRole("note")).toBeTruthy();
   expect(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeTruthy();
   expect(within(review).getByText("مبلغ کل سفارش").parentElement!.textContent).toContain("۶۰۰ ریال");
   fireEvent.change(screen.getByLabelText("یادداشت داخلی"), { target: { value: "یادداشت محفوظ" } });
@@ -440,7 +449,7 @@ it("creates all selected rooms and shows every reservation and the authoritative
   expect(within(result).getByText("O-123456")).toBeTruthy();
   expect(within(result).getByText(/مبلغ کل سفارش/).parentElement?.textContent).toContain("۶۰۰");
   expect(within(result).getAllByRole("link").map(link => link.getAttribute("href"))).toEqual([
-    "/admin/reservations?reservationId=50", "/admin/reservations?reservationId=51", "/admin/reservations?reservationId=52",
+    "/admin/reservations/50", "/admin/reservations/51", "/admin/reservations/52",
   ]);
   expect(refresh).toHaveBeenCalledOnce();
   const creates = mocks.api.mock.calls.filter(([path, options]) => path === "/admin/reservations" && options?.method === "POST");
@@ -899,6 +908,36 @@ it("keeps Step 2 compact before selection, with no second date request or large 
   fireEvent.click(await screen.findByRole("button", { name: /انتخاب همه/ }));
   fireEvent.click(rooms);
   expect(await screen.findByRole("heading", { name: "خلاصه قیمت" })).toBeTruthy();
+});
+
+it.each([true, false, undefined])("shows per-reservation next steps only with explicit payment-preparation capability (%s)", async capability => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    const result = await original(path, ...args);
+    if (path === "/admin/reservations") return { ...result, reservations: result.reservations.map((item: object, index: number) => ({
+      ...item, status: ["Pending", "Confirmed", "PendingApproval"][index], canPrepareManualPayment: index === 0 ? capability : true,
+    })) };
+    return result;
+  });
+  await openStay(); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
+  const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  expect(within(result).getAllByRole("heading", { name: "سفارش دستی ثبت شد" })).toHaveLength(1);
+  expect(within(result).queryByRole("list", { name: "مراحل ایجاد رزرو" })).toBeNull();
+  const rows = within(within(result).getByRole("list", { name: "رزروهای ایجادشده" })).getAllByRole("listitem");
+  const instruction = "جزئیات رزرو را باز کنید، آماده‌سازی برای پرداخت را انجام دهید و پس از دریافت وجه، آن را ثبت کنید.";
+  expect(rows[0].textContent?.includes(instruction)).toBe(capability === true);
+  expect(rows[1].textContent).toContain("این رزرو تأیید شده است.");
+  expect(rows[1].textContent).not.toContain("دریافت وجه");
+  expect(rows[2].textContent).toContain("جزئیات رزرو را برای بررسی اقدامات در دسترس باز کنید.");
+  rows.forEach((row, index) => {
+    expect(within(row).getByRole("link", { name: `مشاهده جزئیات رزرو R-${100000 + index}` }).getAttribute("href"))
+      .toBe(`/admin/reservations/${50 + index}`);
+    expect(row.textContent).toContain("۲۰۰ ریال");
+  });
+  expect(within(result).getByText("مبلغ کل سفارش").parentElement?.textContent).toContain("۶۰۰ ریال");
+  expect(within(result).getByText("بستن").closest("button")).toBeTruthy();
 });
 
 it("finishes in the same dialog and offers only the server-authorized per-reservation approval review", async () => {

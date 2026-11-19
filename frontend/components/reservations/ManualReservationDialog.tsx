@@ -135,6 +135,7 @@ type ManualBookingCreateResponse = {
     roomTypeName: string;
     finalAmount: number;
     status?: ReservationTableStatus;
+    canPrepareManualPayment?: boolean;
     allowedStatusTransitions?: ReservationTableStatus[];
     propertyId?: number;
   }>;
@@ -565,6 +566,7 @@ export function ManualReservationDialog({
   const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
   const [submissionError, setSubmissionError] = useState("");
   const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const successHeadingRef = useRef<HTMLSpanElement>(null);
   const [availabilityReloadKey, setAvailabilityReloadKey] = useState(0);
   const [selectedStatus, setSelectedStatus] =
     useState<ReservationTableStatus>("Pending");
@@ -863,7 +865,7 @@ export function ManualReservationDialog({
   }, []);
 
   useEffect(() => {
-    if (isWizard && dialogOpen) stepHeadingRef.current?.focus();
+    if (isWizard && dialogOpen) (createdOrder ? successHeadingRef.current : stepHeadingRef.current)?.focus();
   }, [wizardStep, isWizard, dialogOpen, createdOrder]);
   const editChangeSummary: Array<{
     label: string;
@@ -1818,17 +1820,18 @@ export function ManualReservationDialog({
         bodyClassName={isWizard ? styles.body : undefined}
         footerClassName={isWizard ? styles.footer : undefined}
         closeDisabled={submitting}
-        title={createdOrder ? "سفارش دستی ثبت شد" : isEditMode ? "ویرایش رزرو" : "افزودن رزرو"}
+        title={createdOrder ? <span ref={successHeadingRef} tabIndex={-1} role="status"
+          className="inline-flex items-center gap-3 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <svg className={styles.savedCheck} viewBox="0 0 52 52" fill="none" aria-hidden="true">
+            <circle cx="26" cy="26" r="24" /><path d="m15 27 7 7 15-16" />
+          </svg>
+          سفارش دستی ثبت شد
+        </span> : isEditMode ? "ویرایش رزرو" : "افزودن رزرو"}
       >
         {isWizard && !createdOrder && <NumberedSteps label="مراحل ایجاد رزرو" currentStep={wizardStep}
           labels={["اطلاعات اقامت", "انتخاب اتاق", "بررسی و ثبت"]} />}
         {isWizard && createdOrder ? <section aria-label="سفارش ثبت‌شده" className="grid gap-3" dir="rtl">
-          <svg className={styles.savedCheck} viewBox="0 0 52 52" fill="none" aria-hidden="true">
-            <circle cx="26" cy="26" r="24" />
-            <path d="m15 27 7 7 15-16" />
-          </svg>
-          <h3 ref={stepHeadingRef} tabIndex={-1} className="font-bold outline-none focus-visible:ring-2 focus-visible:ring-ring" role="status">سفارش با موفقیت ثبت شد.</h3>
-          <dl className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+          <dl className="grid grid-cols-2 gap-3 rounded-lg bg-muted p-3 text-sm sm:grid-cols-3">
             <div><dt className="text-muted-foreground">شماره سفارش</dt><dd><bdi>{createdOrder.sessionCode}</bdi></dd></div>
             <div><dt className="text-muted-foreground">تعداد رزروها</dt><dd>{toPersianDigits(createdOrder.reservations.length)}</dd></div>
             <div><dt className="text-muted-foreground">مبلغ کل سفارش</dt><dd className="font-bold">{formatCurrency(createdOrder.totalAmount, {
@@ -1836,16 +1839,27 @@ export function ManualReservationDialog({
             })}</dd></div>
           </dl>
           <ul className="divide-y divide-border rounded-lg border border-border" aria-label="رزروهای ایجادشده">
-            {createdOrder.reservations.map(item => <li key={item.id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
-              <div className="grid min-w-0 gap-1">
-                <Link className="break-words text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  href={`/admin/reservations?reservationId=${item.id}`} onClick={() => setDialogOpen(false)}>
+            {createdOrder.reservations.map(item => <li key={item.id} className="flex flex-wrap items-start justify-between gap-3 p-3 text-sm">
+              <div className="grid min-w-0 flex-1 gap-2">
+                <p className="break-words font-semibold">
                   {item.reservationNumber} — {item.roomName || item.roomTypeName}
-                </Link>
+                </p>
+                <div className="flex flex-wrap items-center gap-3">
                 <span>{formatCurrency(item.finalAmount, { currencyLabel: createdOrder.currency === "IRR" ? "ریال" : createdOrder.currency })}</span>
                 <KoochBadge variant={item.status ? statusVariant(item.status) : "muted"}>
                   {item.status ? statusLabels[item.status] ?? item.status : "وضعیت در پاسخ موجود نیست"}
                 </KoochBadge>
+                </div>
+                <p className="text-xs leading-6 text-muted-foreground">{item.status === "Confirmed"
+                  ? "این رزرو تأیید شده است."
+                  : item.status === "Pending" && item.canPrepareManualPayment === true
+                    ? "جزئیات رزرو را باز کنید، آماده‌سازی برای پرداخت را انجام دهید و پس از دریافت وجه، آن را ثبت کنید."
+                    : "جزئیات رزرو را برای بررسی اقدامات در دسترس باز کنید."}</p>
+                <Link className="inline-flex min-h-11 w-fit items-center rounded-sm text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  aria-label={`مشاهده جزئیات رزرو ${item.reservationNumber}`}
+                  href={`/admin/reservations/${item.id}`} onClick={() => setDialogOpen(false)}>
+                  مشاهده جزئیات رزرو
+                </Link>
               </div>
               {canReviewCreated(item) &&
                 <KoochButton type="button" variant="outline" size="sm" aria-label={`بررسی و تأیید رزرو ${item.reservationNumber}`}
@@ -2536,7 +2550,7 @@ export function ManualReservationDialog({
             <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-3 font-bold"><span>مبلغ کل سفارش</span><span>{pricePreview ? formatCurrency(pricePreview.finalAmount, { currencyLabel: pricePreview.currency === "IRR" ? "ریال" : pricePreview.currency }) : "قیمت آماده نیست"}</span></p>
             <fieldset className="grid gap-2" disabled={submitting} aria-labelledby="manual-mode-label">
               <div className="flex items-center gap-2 text-sm font-semibold"><span id="manual-mode-label">نحوه ثبت رزرو</span>
-                <KoochInfoHint ariaLabel="توضیح نحوه ثبت رزرو" constrainToViewport content={<div className="grid gap-2">
+                <KoochInfoHint ariaLabel="توضیح نحوه ثبت رزرو" floating content={<div className="grid gap-2">
                   <p>ثبت بدون دریافت وجه فقط سفارش و رزروهای آن را ایجاد می‌کند؛ رسید یا پرداختی ثبت نمی‌شود و رزروها تأیید نشده‌اند. آماده‌سازی برای پرداخت، اقدام جداگانه‌ای است. رزروهای درخواستی در انتظار تأیید می‌مانند.</p>
                   <p>ثبت دریافت کامل: وجه کاملِ از قبل دریافت‌شده با یک رسید ثبت و بین رزروها تخصیص داده می‌شود؛ همهٔ رزروهای سفارش تأیید می‌شوند. از مهمان وجهی برداشت نمی‌شود. تاریخ رسید، امروز به وقت ایران است.</p>
                   <p>برای هر اتاق یک رزرو جدا ایجاد می‌شود. ظرفیت و قیمت هنگام ثبت دوباره در سرور بررسی می‌شوند.</p>
