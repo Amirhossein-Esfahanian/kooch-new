@@ -93,6 +93,20 @@ describe("manual reservation traveler compatibility", () => {
     expect(mocks.error).not.toHaveBeenCalled();
   });
 
+  it("preserves genuinely selectable server-provided statuses in the labeled edit control", async () => {
+    render(<ManualReservationDialog context="admin" mode="edit" open onCreated={vi.fn()}
+      reservation={reservation({ allowedStatusTransitions: ["ApprovedAwaitingPayment", "Cancelled"] })} />);
+    const choices = await screen.findByRole("group", { name: "انتخاب وضعیت رزرو" });
+    const buttons = within(choices).getAllByRole("button");
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(buttons[1]);
+    expect(buttons[1].getAttribute("aria-pressed")).toBe("true");
+    expect(buttons[0].getAttribute("aria-pressed")).toBe("false");
+    expect(within(choices).queryByText("لغوشده")).toBeNull();
+    expect(mocks.api.mock.calls.some(([, options]) => options?.method === "PUT")).toBe(false);
+  });
+
   it("keeps paid reservation traveler read-only during notes-only editing", async () => {
     render(<ManualReservationDialog context="admin" mode="edit" open
       onCreated={vi.fn()} reservation={reservation({ status: "Paid" })} />);

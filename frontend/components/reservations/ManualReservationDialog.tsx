@@ -32,6 +32,7 @@ import {
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { KoochDatePicker } from "../KoochDatePicker";
+import { displayDateParts } from "../SharedDateRangePicker";
 import type {
   ReservationTableItem,
   ReservationTableStatus,
@@ -1771,7 +1772,7 @@ export function ManualReservationDialog({
                 if (wizardStep !== 3 || !stayInputsValid || !roomsReady) return;
                 try { await createReservation(); }
                 catch (caught) { setSubmissionError(caught instanceof Error ? caught.message : "ذخیره رزرو انجام نشد."); }
-              }}>{willRecordReceived ? "ثبت دریافت کامل و تأیید رزرو" : "تایید و ایجاد رزرو"}</KoochButton>}
+              }}>{willRecordReceived ? "ثبت دریافت کامل و تأیید رزرو" : "ثبت رزرو بدون دریافت وجه"}</KoochButton>}
           </div> : <>
             <KoochButton
               disabled={submitting}
@@ -1862,22 +1863,26 @@ export function ManualReservationDialog({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-muted-foreground">
-                  وضعیت رزرو
+                  {isWizard ? "وضعیت پس از ثبت" : "وضعیت رزرو"}
                 </p>
-                <div className="mt-2">
+                {(!isWizard || willRecordReceived || statusSelectionOptions.length <= 1) && <div className="mt-2">
                   <KoochBadge variant={statusVariant(willRecordReceived ? "Confirmed" : displayedStatus)}>
                     {statusLabels[willRecordReceived ? "Confirmed" : displayedStatus] ?? displayedStatus}
                   </KoochBadge>
-                </div>
+                </div>}
               </div>
               <p className="max-w-md text-xs font-semibold leading-6 text-muted-foreground">
                 {willRecordReceived ? "پس از ثبت رسید دریافت کامل، تمام رزروهای این سفارش تأیید می‌شوند." : isEditMode
                   ? "فقط وضعیت‌های مجاز بازگشتی از گردش‌کار قابل انتخاب هستند. تغییر انتخاب‌شده همراه ذخیره اعمال می‌شود."
-                  : "وضعیت پیش‌فرض از نوع رزرو اتاق تعیین می‌شود. فقط وضعیت‌های مجاز ثبت دستی قابل انتخاب هستند."}
+                  : isWizard
+                    ? hasOnRequest
+                      ? "رزروهای درخواستی در انتظار تأیید می‌مانند. ثبت بدون وجه به معنی تأیید یا آماده‌بودن برای پرداخت نیست."
+                      : "رزروها بدون دریافت وجه و در وضعیت در انتظار ثبت می‌شوند؛ تأیید نشده‌اند و آماده‌سازی برای پرداخت، اقدام جداگانه‌ای است."
+                    : "وضعیت پیش‌فرض از نوع رزرو اتاق تعیین می‌شود. فقط وضعیت‌های مجاز ثبت دستی قابل انتخاب هستند."}
               </p>
             </div>
-            {!isTerminalReadOnly && !willRecordReceived && statusSelectionOptions.length > 0 && (
-              <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+            {!isTerminalReadOnly && !willRecordReceived && statusSelectionOptions.length > (isWizard ? 1 : 0) && (
+              <div role="group" aria-label="انتخاب وضعیت رزرو" className="flex flex-wrap gap-2 border-t border-border pt-3">
                 {statusSelectionOptions.map((status) => (
                   <KoochButton
                     aria-pressed={selectedStatus === status}
@@ -2468,11 +2473,12 @@ export function ManualReservationDialog({
             </>
           )}
 
-          {isWizard && wizardStep === 3 && <section aria-label="خلاصه سفارش دستی" className="grid gap-4">
-            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+          {isWizard && wizardStep === 3 && <section aria-label="خلاصه سفارش دستی" className="grid gap-3">
+            <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-2">
               <div><dt className="text-muted-foreground">اقامتگاه</dt><dd className="font-semibold">{properties.find(property => property.id === selectedPropertyId)?.name}</dd></div>
               <div><dt className="text-muted-foreground">مهمان</dt><dd>{selectedGuest ? guestName(selectedGuest) : draft.guestSearch}</dd></div>
-              <div><dt className="text-muted-foreground">بازه اقامت</dt><dd><bdi>{toPersianDigits(draft.checkInDate)} — {toPersianDigits(draft.checkOutDate)}</bdi></dd></div>
+              <div><dt className="text-muted-foreground">ورود</dt><dd><time dateTime={draft.checkInDate}>{displayDateParts(draft.checkInDate, "jalali").date}</time></dd></div>
+              <div><dt className="text-muted-foreground">خروج</dt><dd><time dateTime={draft.checkOutDate}>{displayDateParts(draft.checkOutDate, "jalali").date}</time></dd></div>
               <div><dt className="text-muted-foreground">مهمانان</dt><dd>{toPersianDigits(draft.adults)} بزرگسال، {toPersianDigits(draft.children)} کودک</dd></div>
             </dl>
             <ul aria-label="قیمت اتاق‌های انتخاب‌شده" className="divide-y divide-border rounded-lg border border-border">
@@ -2482,15 +2488,19 @@ export function ManualReservationDialog({
               </li>)}
             </ul>
             <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-3 font-bold"><span>مبلغ کل سفارش</span><span>{pricePreview ? formatCurrency(pricePreview.finalAmount, { currencyLabel: pricePreview.currency === "IRR" ? "ریال" : pricePreview.currency }) : "قیمت آماده نیست"}</span></p>
-            <fieldset className="grid gap-3" disabled={submitting}>
-              <legend className="mb-2 text-sm font-semibold">نحوه ثبت رزرو</legend>
+            <fieldset className="grid gap-2" disabled={submitting} aria-describedby="manual-payment-outcome">
+              <legend className="mb-1 text-sm font-semibold">نحوه ثبت رزرو</legend>
+              <div className="grid gap-x-4 sm:grid-cols-2">
               <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="manual-create-payment"
                 checked={!willRecordReceived} onChange={() => setRecordReceived(false)} />ثبت رزرو بدون دریافت وجه</label>
               {canReceiveFull && <label className="flex min-h-11 items-center gap-2 text-sm"><input type="radio" name="manual-create-payment"
                 checked={willRecordReceived} onChange={() => setRecordReceived(true)} />ثبت دریافت کامل و تأیید رزرو</label>}
+              </div>
+              <p id="manual-payment-outcome" className="text-xs leading-6 text-muted-foreground">{willRecordReceived
+                ? "وجه کاملِ از قبل دریافت‌شده با یک رسید ثبت و بین رزروها تخصیص داده می‌شود؛ همهٔ رزروهای سفارش تأیید می‌شوند. از مهمان وجهی برداشت نمی‌شود. تاریخ رسید، امروز به وقت ایران است."
+                : "فقط سفارش و رزروهای آن ثبت می‌شوند؛ رسید یا پرداختی ثبت نمی‌شود و این اقدام رزروها را تأیید نمی‌کند."}</p>
               {willRecordReceived && <>
-                <p className="text-sm leading-6 text-muted-foreground">این اقدام فقط وجهی را ثبت می‌کند که قبلاً کامل دریافت شده است و از مهمان پول برداشت نمی‌کند. تاریخ رسید، امروز به وقت ایران ثبت می‌شود.</p>
-                <div className="grid gap-3 sm:grid-cols-2"><ManualReceiptFields method={receiptMethod} reference={receiptReference}
+                <div className="grid gap-2 sm:grid-cols-2"><ManualReceiptFields method={receiptMethod} reference={receiptReference}
                   onMethodChange={setReceiptMethod} onReferenceChange={setReceiptReference} disabled={submitting} /></div>
               </>}
             </fieldset>
@@ -2500,7 +2510,7 @@ export function ManualReservationDialog({
             <KoochTextarea
               disabled={isTerminalReadOnly}
               onChange={(event) => updateDraft("notes", event.target.value)}
-              rows={3}
+              rows={isWizard ? 2 : 3}
               value={draft.notes}
             />
           </KoochField>}

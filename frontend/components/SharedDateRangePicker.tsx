@@ -156,7 +156,7 @@ function displayDate(
   );
 }
 
-function displayDateParts(isoDate: string, calendarType: CalendarType) {
+export function displayDateParts(isoDate: string, calendarType: CalendarType) {
   const date = asCalendar(dayjs(isoDate), calendarType);
   const monthName =
     calendarType === "jalali"

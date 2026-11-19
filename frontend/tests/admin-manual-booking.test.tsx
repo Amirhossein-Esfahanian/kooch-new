@@ -174,7 +174,7 @@ it("allocates the requested total across named and TypeBased rooms with one auth
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   expect(within(screen.getByRole("list", { name: "قیمت اتاق‌های انتخاب‌شده" })).getAllByRole("listitem")).toHaveLength(3);
   expect(screen.queryByLabelText("ثبت دریافت کامل و تأیید رزرو")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   const payload = JSON.parse(mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")![1].body);
   expect(payload).toMatchObject({ roomCount: 3, roomIds: [30], roomTypeSelections: [{ roomTypeId: 21, quantity: 2 }] });
@@ -213,7 +213,7 @@ it("keeps API currency and amounts consistent from preview through creation and 
   expect(screen.queryByText(/تومان/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   expect(screen.getByText("۵٬۰۰۰٬۰۰۰ ریال")).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   expect(within(result).getByText(/مبلغ کل سفارش/).parentElement?.textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
   fireEvent.click(within(result).getByText("بستن"));
@@ -226,13 +226,39 @@ it("keeps API currency and amounts consistent from preview through creation and 
   expect(JSON.parse(receipt[1].body)).toMatchObject({ confirmedAmount: 5_000_000, currency: "IRR" });
 });
 
+it("reviews localized arrival/departure and a single status badge while matching the submit label to each mode", async () => {
+  await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  const review = screen.getByRole("region", { name: "خلاصه سفارش دستی" });
+  for (const [label, iso, localized] of [["ورود", "2035-02-01", "۱۲ بهمن ۱۴۱۳"], ["خروج", "2035-02-03", "۱۴ بهمن ۱۴۱۳"]]) {
+    const date = within(review).getByText(label).parentElement!.querySelector("time")!;
+    expect(date.getAttribute("dateTime")).toBe(iso);
+    expect(date.textContent).toBe(localized);
+  }
+  expect(screen.getAllByText("در انتظار")).toHaveLength(1);
+  expect(screen.queryByRole("button", { name: "در انتظار" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "انتخاب وضعیت رزرو" })).toBeNull();
+  expect(screen.getByText(/آماده‌سازی برای پرداخت، اقدام جداگانه‌ای است/)).toBeTruthy();
+  expect(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeTruthy();
+  expect(within(review).getByText("مبلغ کل سفارش").parentElement!.textContent).toContain("۶۰۰ ریال");
+  fireEvent.change(screen.getByLabelText("یادداشت داخلی"), { target: { value: "یادداشت محفوظ" } });
+  fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  expect(screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeNull();
+  expect(screen.getByText(/وجه کاملِ از قبل دریافت‌شده/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }));
+  expect(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeTruthy();
+  expect((screen.getByLabelText("یادداشت داخلی") as HTMLTextAreaElement).value).toBe("یادداشت محفوظ");
+  expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations")).toHaveLength(0);
+});
+
 it("defaults to unchanged unpaid creation even for an authorized receipt actor", async () => {
   await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   expect((screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }) as HTMLInputElement).checked).toBe(true);
   expect((screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }) as HTMLInputElement).checked).toBe(false);
   expect(screen.queryByLabelText("روش دریافت وجه")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   const payload = JSON.parse(mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")![1].body);
   expect(payload.status).toBe("Pending");
@@ -250,7 +276,7 @@ it("records a full received receipt only on final submit and shows all confirmed
   await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
-  expect(screen.getByText(/از مهمان پول برداشت نمی‌کند/)).toBeTruthy();
+  expect(screen.getByText(/از مهمان وجهی برداشت نمی‌شود/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("روش دریافت وجه"), { target: { value: "CardToCard" } });
   fireEvent.change(screen.getByLabelText("شماره پیگیری (اختیاری)"), { target: { value: " REF-123 " } });
   expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations")).toHaveLength(0);
@@ -285,7 +311,7 @@ it("keeps OnRequest on its current unpaid flow even with receipt permission", as
   await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   expect(screen.queryByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   const payload = JSON.parse(mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")![1].body);
   expect(payload.status).toBe("PendingApproval");
@@ -359,7 +385,7 @@ it("creates all selected rooms and shows every reservation and the authoritative
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   expect(screen.getByRole("region", { name: "خلاصه سفارش دستی" })).toBeTruthy();
   expect(within(screen.getByRole("list", { name: "قیمت اتاق‌های انتخاب‌شده" })).getAllByRole("listitem")).toHaveLength(3);
-  const finalSubmit = await screen.findByRole("button", { name: "تایید و ایجاد رزرو" });
+  const finalSubmit = await screen.findByRole("button", { name: "ثبت رزرو بدون دریافت وجه" });
   fireEvent.click(finalSubmit);
   fireEvent.click(finalSubmit);
   const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
@@ -457,9 +483,10 @@ it("uses the OnRequest status and never offers confirmed creation", async () => 
   });
   await openStay(); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  expect(screen.getByRole("button", { name: "در انتظار تایید" })).toBeTruthy();
+  expect(screen.getByText("در انتظار تایید")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "در انتظار تایید" })).toBeNull();
   expect(screen.queryByRole("button", { name: "تایید شده" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   const create = mocks.api.mock.calls.find(([path]) => path === "/admin/reservations");
   expect(JSON.parse(create![1].body).status).toBe("PendingApproval");
@@ -500,7 +527,7 @@ it("preserves all input after final submission fails", async () => {
     ? Promise.reject(new Error("Synthetic save failure")) : original(path, ...args));
   await openStay(); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   expect(await screen.findByText("Synthetic save failure")).toBeTruthy();
   expect(screen.getByRole("region", { name: "خلاصه سفارش دستی" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
@@ -707,7 +734,7 @@ it("books TypeBased quantities without physical room IDs and keeps mixed missing
   expect(JSON.parse(preview[1].body)).toMatchObject({ forManualCreation: true, roomTypeId: 20, roomCount: 3 });
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   expect(within(screen.getByRole("list", { name: "قیمت اتاق‌های انتخاب‌شده" })).getAllByRole("listitem")).toHaveLength(3);
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   const create = mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")!;
   expect(JSON.parse(create[1].body)).toMatchObject({ roomId: 0, roomIds: [], roomCount: 3,
@@ -791,12 +818,12 @@ it("finishes in the same dialog and offers only the server-authorized per-reserv
   await openStay(vi.fn(), 10, reviewAction); await selectRooms();
   const originalDialog = screen.getByRole("dialog", { name: "افزودن رزرو" });
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   expect(result).toBe(originalDialog);
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
   expect(document.getElementById("manual-reservation-form")).toBeNull();
-  expect(within(result).queryByRole("button", { name: "تایید و ایجاد رزرو" })).toBeNull();
+  expect(within(result).queryByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeNull();
   expect(within(result).getByText("تعداد رزروها").parentElement?.textContent).toContain("۳");
   expect(within(result).getAllByRole("button", { name: /بررسی و تأیید رزرو/ })).toHaveLength(1);
   expect(within(result).queryByRole("button", { name: /پرداخت/ })).toBeNull();
@@ -818,7 +845,7 @@ it("preserves success after a list-refresh failure, without resubmit or fallback
   });
   await openStay(vi.fn().mockRejectedValue(new Error("refresh failed")), 10, vi.fn()); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   await waitFor(() => expect(mocks.warning).toHaveBeenCalledOnce());
   expect(within(result).queryByRole("button", { name: /بررسی و تأیید|پرداخت/ })).toBeNull();
@@ -846,7 +873,7 @@ it("does not offer approval review without property permission even when the sta
   const reviewAction = vi.fn();
   await openStay(vi.fn(), 10, reviewAction, canReview); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
   expect(canReview).toHaveBeenCalledWith(10);
   expect(within(result).queryByRole("button", { name: /بررسی و تأیید/ })).toBeNull();
