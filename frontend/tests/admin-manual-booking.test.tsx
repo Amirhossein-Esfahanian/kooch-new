@@ -133,18 +133,50 @@ async function selectRooms() {
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
 }
 
+it("shows one prerequisite hint without field errors and clears it when step one is complete", async () => {
+  render(<ManualReservationDialog context="admin" onCreated={vi.fn()} />);
+  fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
+  const next = await screen.findByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement;
+  const hint = () => document.getElementById(next.getAttribute("aria-describedby") ?? "");
+  expect(next.disabled).toBe(true);
+  expect(hint()?.textContent).toBe("اقامتگاه را انتخاب کنید.");
+  expect(document.querySelector("[aria-invalid=true]")).toBeNull();
+  const property = await screen.findByRole("button", { name: /^اقامتگاه/ });
+  expect(property.closest("[class*='md:col-span-2']")).not.toBeNull();
+  fireEvent.click(property);
+  fireEvent.click(await screen.findByRole("button", { name: "اقامتگاه آزمون" }));
+  expect(hint()?.textContent).toBe("مهمان را انتخاب کنید.");
+  const guest = screen.getByRole("button", { name: "انتخاب مهمان" });
+  expect(guest.closest("[class*=guestRow]")?.contains(screen.getByRole("button", { name: "افزودن مهمان" }))).toBe(true);
+  fireEvent.click(guest);
+  fireEvent.change(await screen.findByPlaceholderText("نام، موبایل یا ایمیل"), { target: { value: "آزمون" } });
+  fireEvent.click(await screen.findByRole("button", { name: /مهمان آزمون/ }));
+  expect(hint()?.textContent).toBe("تاریخ ورود و خروج را انتخاب کنید.");
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب تاریخ آزمون" }));
+  expect(next.disabled).toBe(false);
+  expect(next.getAttribute("aria-describedby")).toBeNull();
+  expect(document.getElementById("manual-stay-hint")).toBeNull();
+  expect((screen.getByLabelText("نوع مهمان") as HTMLSelectElement).className).toContain("h-[52px]");
+  expect(screen.queryByText(/سن واقعی هر کودک لازم است/)).toBeNull();
+  expect(mocks.api.mock.calls.some(([path]) => path.includes("available-rooms"))).toBe(false);
+});
+
 it("keeps child-age validation active when the floating picker closes", async () => {
   await openStay();
   openGuestCounts();
   fireEvent.click(screen.getByRole("button", { name: "افزایش کودک" }));
+  expect(screen.getByText(/سن واقعی هر کودک لازم است/)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^مهمانان و اتاق‌ها:/ }));
   const next = screen.getByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement;
   expect(next.disabled).toBe(true);
+  expect(document.getElementById(next.getAttribute("aria-describedby")!)?.textContent)
+    .toBe("سن هر کودک را در انتخابگر مهمانان وارد کنید.");
   expect(screen.queryByRole("button", { name: "افزایش کودک" })).toBeNull();
   expect(screen.queryByRole("combobox", { name: "سن کودک ۱" })).toBeNull();
   openGuestCounts();
   fireEvent.change(screen.getByRole("combobox", { name: "سن کودک ۱" }), { target: { value: "0" } });
   expect(next.disabled).toBe(false);
+  expect(document.getElementById("manual-stay-hint")).toBeNull();
   expect(mocks.api.mock.calls.some(([path]) => path === "/admin/reservations")).toBe(false);
 });
 

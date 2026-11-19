@@ -752,12 +752,17 @@ export function ManualReservationDialog({
     pricePreview !== null
       ? pricePreview.finalAmount + existingManualAdjustment
       : (reservation?.finalAmount ?? reservation?.totalPrice ?? null);
-  const stayInputsValid = Boolean(selectedPropertyId && draft.guestId && hasValidDateRange &&
-    /^\d+$/.test(draft.requestedRooms) && Number(draft.requestedRooms) >= 1 && requestedRoomCount <= 100 &&
-    /^\d+$/.test(draft.adults) && Number(draft.adults) >= 1 && Number(draft.adults) <= 100 &&
-    /^\d+$/.test(draft.children) && Number(draft.children) <= 100 &&
-    draft.childAges.length === Number(draft.children) &&
-    draft.childAges.every(age => /^\d+$/.test(age) && Number(age) <= 17));
+  const stayInputChecks = [
+    { valid: Boolean(selectedPropertyId), hint: "اقامتگاه را انتخاب کنید." },
+    { valid: Boolean(draft.guestId), hint: "مهمان را انتخاب کنید." },
+    { valid: hasValidDateRange, hint: "تاریخ ورود و خروج را انتخاب کنید." },
+    { valid: /^\d+$/.test(draft.requestedRooms) && Number(draft.requestedRooms) >= 1 && requestedRoomCount <= 100, hint: "تعداد اتاق‌ها را مشخص کنید." },
+    { valid: /^\d+$/.test(draft.adults) && Number(draft.adults) >= 1 && Number(draft.adults) <= 100, hint: "تعداد بزرگسالان را مشخص کنید." },
+    { valid: /^\d+$/.test(draft.children) && Number(draft.children) <= 100, hint: "تعداد کودکان را مشخص کنید." },
+    { valid: draft.childAges.length === Number(draft.children) && draft.childAges.every(age => /^\d+$/.test(age) && Number(age) <= 17), hint: "سن هر کودک را در انتخابگر مهمانان وارد کنید." },
+  ];
+  const stayInputHint = stayInputChecks.find(check => !check.valid)?.hint;
+  const stayInputsValid = !stayInputHint;
   const roomPrices = pricePreview
     ? selectedRoomCount === 1 ? [pricePreview] : pricePreview.roomPrices ?? []
     : [];
@@ -1761,7 +1766,10 @@ export function ManualReservationDialog({
             <KoochButton disabled={submitting} onClick={() => wizardStep === 1 ? setDialogOpen(false) : goToStep(wizardStep === 3 ? 2 : 1)} type="button" variant="outline">
               {wizardStep === 1 ? "انصراف" : "بازگشت"}
             </KoochButton>
+            {wizardStep === 1 && stayInputHint && !loadingRooms && <p id="manual-stay-hint"
+              className="min-w-0 flex-1 text-end text-xs leading-5 text-muted-foreground">{stayInputHint}</p>}
             {wizardStep < 3 ? <KoochButton type="button"
+              aria-describedby={wizardStep === 1 && stayInputHint && !loadingRooms ? "manual-stay-hint" : undefined}
               loading={wizardStep === 1 && loadingRooms}
               disabled={wizardStep === 1 ? !stayInputsValid || loadingRooms : !roomsReady}
               onClick={() => wizardStep === 1 ? void checkWizardAvailability() : goToStep(3)}>
@@ -1998,7 +2006,7 @@ export function ManualReservationDialog({
                 ))}
 
                 {context === "admin" && showStay && (
-                  <KoochField label="اقامتگاه" required>
+                  <KoochField className={isWizard ? "md:col-span-2" : undefined} label="اقامتگاه" required>
                     <KoochSearchableSelect
                       disabled={isLockedEdit}
                       emptyText="اقامتگاهی پیدا نشد."
@@ -2044,7 +2052,7 @@ export function ManualReservationDialog({
 
                 {!isEditMode && showStay && (
                   <KoochField className="md:col-span-2" label="مهمان" required>
-                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                    <div className={isWizard ? styles.guestRow : "grid gap-2 sm:grid-cols-[1fr_auto]"}>
                       <KoochSearchableSelect
                         disabled={isLockedEdit}
                         emptyText={
@@ -2081,7 +2089,7 @@ export function ManualReservationDialog({
                 )}
 
                 {showStay && <KoochField
-                  className="md:col-span-2"
+                  className={`md:col-span-2 ${isWizard ? styles.stayDates : ""}`}
                   label="بازه اقامت"
                   required
                 >
@@ -2242,10 +2250,10 @@ export function ManualReservationDialog({
                     value={{ rooms: requestedRoomCount, adults: toPositiveInt(draft.adults, 1),
                       children: toNonNegativeInt(draft.children), childAges: draft.childAges }}
                     onChange={updateWizardGuests} />
-                    <KoochField label="نوع مهمان"><KoochSelect value={draft.guestType} onChange={event => {
+                    <KoochField label="نوع مهمان"><KoochSelect className="h-[52px]" value={draft.guestType} onChange={event => {
                       invalidateWizardAvailability(); updateDraft("guestType", event.target.value as PricingGuestType);
                     }}><option value="Iranian">ایرانی</option><option value="Foreign">خارجی</option></KoochSelect></KoochField>
-                  <p className={`${styles.guestHint} text-xs text-muted-foreground`}>سن واقعی هر کودک لازم است؛ ظرفیت و هزینه در انتخاب اتاق بررسی می‌شود.</p>
+                  {Number(draft.children) > 0 && <p className={`${styles.guestHint} text-xs text-muted-foreground`}>سن واقعی هر کودک لازم است؛ ظرفیت و هزینه در انتخاب اتاق بررسی می‌شود.</p>}
                 </div>}
                 {showStay && !isWizard && <KoochField
                   helperText={
