@@ -178,6 +178,8 @@ type ManualRoomTypeOption = {
   name: string;
   inventoryMode: "NamedRooms" | "TypeBasedInventory";
   availableCount: number;
+  baseCapacity?: number | null;
+  maxExtraGuests?: number | null;
   bookingMode: "Instant" | "OnRequest";
   rooms: AvailableRoomApiResponse[];
 };
@@ -2168,11 +2170,10 @@ export function ManualReservationDialog({
                       <KoochMultiSelect
                         id="manual-room-types"
                         options={manualOptions.filter(option => option.inventoryMode === "TypeBasedInventory").map(option => {
-                          const rules = wizardRules.find(rule => rule.roomTypeId === option.roomTypeId);
                           return { value: String(option.roomTypeId), label: option.name, searchText: option.name,
                             description: <span className="flex flex-wrap gap-x-3 gap-y-1">
-                              <span>ظرفیت پایه: {rules ? `${toPersianDigits(rules.baseCapacity)} نفر` : "نامشخص"}</span>
-                              <span>نفر اضافه: {rules ? `${toPersianDigits(rules.extraGuestAllowed ? rules.maxExtraGuests : 0)} نفر` : "نامشخص"}</span>
+                              <span>ظرفیت پایه: {option.baseCapacity != null ? `${toPersianDigits(option.baseCapacity)} نفر` : "نامشخص"}</span>
+                              <span>نفر اضافه: {option.maxExtraGuests != null ? `${toPersianDigits(option.maxExtraGuests)} نفر` : "نامشخص"}</span>
                               <span>{toPersianDigits(option.availableCount)} واحد موجود</span>
                             </span>,
                             disabled: !selectedTypeOptions.some(selected => selected.roomTypeId === option.roomTypeId) &&

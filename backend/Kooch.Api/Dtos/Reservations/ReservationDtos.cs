@@ -199,6 +199,8 @@ public sealed class ManualBookingRoomTypeOption
     public string Name { get; set; } = string.Empty;
     public InventoryMode InventoryMode { get; set; }
     public int AvailableCount { get; set; }
+    public int? BaseCapacity { get; set; }
+    public int? MaxExtraGuests { get; set; }
     public ReservationBookingModeFilter BookingMode { get; set; }
     public IReadOnlyList<AvailableRoomResponse> Rooms { get; set; } = [];
 }

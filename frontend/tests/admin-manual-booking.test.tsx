@@ -676,6 +676,29 @@ it("does not advance a closed/reopened wizard from a previous availability respo
   expect((next as HTMLButtonElement).disabled).toBe(true);
 });
 
+it.each([
+  { baseCapacity: 2, maxExtraGuests: 3, base: "۲ نفر", extra: "۳ نفر" },
+  { baseCapacity: 0, maxExtraGuests: 0, base: "۰ نفر", extra: "۰ نفر" },
+  { baseCapacity: null, maxExtraGuests: null, base: "نامشخص", extra: "نامشخص" },
+  { baseCapacity: undefined, maxExtraGuests: undefined, base: "نامشخص", extra: "نامشخص" },
+])("displays availability capacities without per-row rules requests: $base / $extra", async values => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    if (path.includes("available-rooms")) return { options: [{ roomTypeId: 20, name: "دبل",
+      inventoryMode: "TypeBasedInventory", availableCount: 7, bookingMode: "Instant", rooms: [],
+      baseCapacity: values.baseCapacity, maxExtraGuests: values.maxExtraGuests }], excluded: [] };
+    return original(path, ...args);
+  });
+  await openStay();
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  fireEvent.click(await screen.findByRole("button", { name: "نوع اتاق" }));
+  const option = await screen.findByRole("button", { name: /^دبل/ });
+  expect(option.textContent).toContain(`ظرفیت پایه: ${values.base}`);
+  expect(option.textContent).toContain(`نفر اضافه: ${values.extra}`);
+  expect(option.textContent).toContain("۷ واحد موجود");
+  expect(mocks.api.mock.calls.some(([path]) => path.includes("effective-rules"))).toBe(false);
+});
+
 it("selects a single type without auto-selection, removes it with trash and preserves it across steps", async () => {
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
@@ -706,8 +729,8 @@ it("selects a single type without auto-selection, removes it with trash and pres
   await selectType("دبل");
   const increase = screen.getByRole("button", { name: "افزایش تعداد دبل" });
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
-  expect(screen.getByRole("button", { name: /^دبل/ }).textContent).toContain("ظرفیت پایه: ۲ نفر");
-  expect(screen.getByRole("button", { name: /^دبل/ }).textContent).toContain("نفر اضافه: ۰ نفر");
+  expect(screen.getByRole("button", { name: /^دبل/ }).textContent).toContain("ظرفیت پایه: نامشخص");
+  expect(screen.getByRole("button", { name: /^دبل/ }).textContent).toContain("نفر اضافه: نامشخص");
   expect((increase as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole("list", { name: "خلاصه تخصیص اتاق‌ها" }).textContent).toBe("دبل × ۱");
   fireEvent.click(screen.getByRole("button", { name: "حذف دبل" }));

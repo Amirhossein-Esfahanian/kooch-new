@@ -67,6 +67,8 @@ public sealed class ManualBookingAvailabilityService(KoochDbContext db,
             {
                 RoomTypeId = type.Id, Name = type.Name, InventoryMode = type.InventoryMode,
                 AvailableCount = type.InventoryMode == InventoryMode.NamedRooms ? rooms.Length : count,
+                BaseCapacity = type.MaxAdults,
+                MaxExtraGuests = type.AllowExtraGuest ? type.MaxExtraGuests : 0,
                 BookingMode = mode, Rooms = rooms
             });
         }
