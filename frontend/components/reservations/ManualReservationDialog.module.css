@@ -4,6 +4,10 @@
 .guestFields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: .75rem; }
 .guestHint { grid-column: 1 / -1; }
 .typePickerPanel :global(.truncate) { white-space: normal; overflow: visible; }
+.savedCheck { width: 3rem; height: 3rem; color: var(--theme-success); justify-self: center; stroke: currentColor; stroke-width: 2.5; }
+.savedCheck path { stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; animation: saved-check-draw .45s ease-out both; }
+@keyframes saved-check-draw { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { .savedCheck path { animation: none; } }
 .guestRow { display: flex; flex-wrap: wrap; align-items: start; gap: .5rem; }
 .guestRow > :first-child { flex: 1 1 15rem; min-width: 0; }
 .guestRow > button { flex: 0 0 auto; }

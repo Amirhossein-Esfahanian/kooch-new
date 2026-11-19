@@ -1,5 +1,7 @@
 "use client";
 
+import { useAnchoredPopover } from "@/lib/use-anchored-popover";
+
 import {
   cloneElement,
   Fragment,
@@ -528,6 +530,7 @@ export type KoochMultiSelectProps = FieldStateProps &
     emptyText?: string;
     selectAllText?: string;
     showBulkActions?: boolean;
+    floating?: boolean;
     clearText?: string;
     disabled?: boolean;
     className?: string;
@@ -916,6 +919,7 @@ export function KoochMultiSelect({
   emptyText = "موردی پیدا نشد.",
   selectAllText = "انتخاب همه",
   showBulkActions = true,
+  floating = false,
   clearText = "حذف همه",
   disabled = false,
   className = "",
@@ -933,6 +937,9 @@ export function KoochMultiSelect({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const controlId = id ?? `kooch-multi-select-${generatedId}`;
   const messageId = error || helperText ? `${controlId}-message` : undefined;
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useAnchoredPopover(open && dropdownPresence.mounted && floating, triggerRef, panelRef, true);
 
   useEffect(() => {
     if (!open) return;
@@ -1005,7 +1012,11 @@ export function KoochMultiSelect({
   }
 
   return (
-    <div className="grid gap-1.5" dir="rtl">
+    <div className="grid gap-1.5" dir="rtl" onKeyDown={floating ? event => {
+      if (open && event.key === "Escape") {
+        event.preventDefault(); event.stopPropagation(); setOpen(false); triggerRef.current?.focus();
+      }
+    } : undefined}>
       <div className="relative" ref={wrapperRef}>
         <button
           aria-describedby={mergeAriaIds(ariaDescribedBy, messageId)}
@@ -1018,7 +1029,9 @@ export function KoochMultiSelect({
           data-control-active={open ? "true" : undefined}
           disabled={disabled}
           id={controlId}
-          onClick={() => setOpen((current) => !current)}
+          onClick={() => { setPosition(null); setOpen((current) => !current); }}
+          aria-controls={open ? `${controlId}-options` : undefined}
+          ref={triggerRef}
           type="button"
         >
           <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
@@ -1049,6 +1062,13 @@ export function KoochMultiSelect({
 
         {dropdownPresence.mounted && (
           <div
+            ref={panelRef}
+            id={`${controlId}-options`}
+            popover={floating ? "manual" : undefined}
+            data-placement={floating ? position?.placement : undefined}
+            style={floating ? { position: "fixed", inset: "auto", margin: 0, top: position?.top ?? 0,
+              left: position?.left ?? 0, width: position?.width, maxHeight: position?.maxHeight,
+              visibility: position ? "visible" : "hidden" } : undefined}
             aria-hidden={!dropdownPresence.visible}
             className={joinClasses(
               "absolute right-0 top-[calc(100%+0.375rem)] z-50 w-full overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
@@ -1056,10 +1076,12 @@ export function KoochMultiSelect({
                 ? "translate-y-0 opacity-100"
                 : "pointer-events-none -translate-y-1 opacity-0",
               dropdownClassName,
+              floating && "flex flex-col",
             )}
           >
-            <div className="border-b border-border p-2">
+            <div className="shrink-0 border-b border-border p-2">
               <KoochInput
+                aria-label={searchPlaceholder}
                 className="h-9"
                 onChange={(event) => setQuery(event.target.value)}
                 placeholder={searchPlaceholder}
@@ -1087,7 +1109,7 @@ export function KoochMultiSelect({
               </button>
             </div>}
 
-            <div className="max-h-64 overflow-y-auto p-1.5">
+            <div className="max-h-64 min-h-0 overflow-y-auto overscroll-contain p-1.5">
               {filteredOptions.length === 0 ? (
                 <p className="px-2 py-3 text-xs font-semibold text-muted-foreground">
                   {emptyText}

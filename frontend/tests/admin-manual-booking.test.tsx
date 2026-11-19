@@ -264,7 +264,7 @@ it("keeps API currency and amounts consistent from preview through creation and 
   expect(JSON.parse(receipt[1].body)).toMatchObject({ confirmedAmount: 5_000_000, currency: "IRR" });
 });
 
-it("reviews localized arrival/departure and a single status badge while matching the submit label to each mode", async () => {
+it("reviews localized dates with click-only mode information instead of a read-only status card", async () => {
   await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   const review = screen.getByRole("region", { name: "خلاصه سفارش دستی" });
@@ -273,9 +273,15 @@ it("reviews localized arrival/departure and a single status badge while matching
     expect(date.getAttribute("dateTime")).toBe(iso);
     expect(date.textContent).toBe(localized);
   }
-  expect(screen.getAllByText("در انتظار")).toHaveLength(1);
+  expect(screen.queryByText("وضعیت پس از ثبت")).toBeNull();
+  expect(screen.queryByText("در انتظار")).toBeNull();
   expect(screen.queryByRole("button", { name: "در انتظار" })).toBeNull();
   expect(screen.queryByRole("group", { name: "انتخاب وضعیت رزرو" })).toBeNull();
+  expect(screen.queryByText(/آماده‌سازی برای پرداخت، اقدام جداگانه‌ای است/)).toBeNull();
+  const info = screen.getByRole("button", { name: "توضیح نحوه ثبت رزرو" });
+  fireEvent.focus(info);
+  expect(info.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.click(info);
   expect(screen.getByText(/آماده‌سازی برای پرداخت، اقدام جداگانه‌ای است/)).toBeTruthy();
   expect(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeTruthy();
   expect(within(review).getByText("مبلغ کل سفارش").parentElement!.textContent).toContain("۶۰۰ ریال");
@@ -284,6 +290,9 @@ it("reviews localized arrival/departure and a single status badge while matching
   expect(screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeNull();
   expect(screen.getByText(/وجه کاملِ از قبل دریافت‌شده/)).toBeTruthy();
+  fireEvent.click(info);
+  expect(screen.queryByText(/وجه کاملِ از قبل دریافت‌شده/)).toBeNull();
+  expect((screen.getByLabelText("یادداشت داخلی") as HTMLTextAreaElement).rows).toBe(2);
   fireEvent.click(screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }));
   expect(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeTruthy();
   expect((screen.getByLabelText("یادداشت داخلی") as HTMLTextAreaElement).value).toBe("یادداشت محفوظ");
@@ -314,6 +323,7 @@ it("records a full received receipt only on final submit and shows all confirmed
   await openStay(vi.fn(), 10, undefined, undefined, true); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
   fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
+  fireEvent.click(screen.getByRole("button", { name: "توضیح نحوه ثبت رزرو" }));
   expect(screen.getByText(/از مهمان وجهی برداشت نمی‌شود/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("روش دریافت وجه"), { target: { value: "CardToCard" } });
   fireEvent.change(screen.getByLabelText("شماره پیگیری (اختیاری)"), { target: { value: " REF-123 " } });
@@ -326,7 +336,7 @@ it("records a full received receipt only on final submit and shows all confirmed
   expect(JSON.parse(calls[0][1].body)).toMatchObject({ status: "Pending", reviewedRoomAmounts: [200, 200, 200],
     receivedPayment: { confirmedAmount: 600, currency: "IRR", method: "CardToCard", referenceNumber: "REF-123",
       idempotencyKey: expect.any(String), paymentDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) } });
-  expect(within(result).getAllByText("تأییدشده")).toHaveLength(3);
+  expect(within(result).getAllByText("تایید شده")).toHaveLength(3);
   expect(within(result).getAllByRole("link")).toHaveLength(3);
   expect(within(result).getByText("O-123456")).toBeTruthy();
   expect(within(result).queryByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeNull();
@@ -521,7 +531,7 @@ it("uses the OnRequest status and never offers confirmed creation", async () => 
   });
   await openStay(); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  expect(screen.getByText("در انتظار تایید")).toBeTruthy();
+  expect(screen.queryByText("در انتظار تایید")).toBeNull();
   expect(screen.queryByRole("button", { name: "در انتظار تایید" })).toBeNull();
   expect(screen.queryByRole("button", { name: "تایید شده" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
@@ -910,6 +920,12 @@ it("finishes in the same dialog and offers only the server-authorized per-reserv
   expect(result).toBe(originalDialog);
   expect(screen.getAllByRole("dialog")).toHaveLength(1);
   expect(document.getElementById("manual-reservation-form")).toBeNull();
+  expect(within(result).queryByRole("list", { name: "مراحل ایجاد رزرو" })).toBeNull();
+  expect(result.querySelector("svg[aria-hidden=true] path")).not.toBeNull();
+  const rows = within(result).getByRole("list", { name: "رزروهای ایجادشده" });
+  expect(within(rows).getAllByRole("listitem").map(row => row.textContent)).toEqual([
+    expect.stringContaining("در انتظار"), expect.stringContaining("در انتظار تایید"), expect.stringContaining("در انتظار تایید"),
+  ]);
   expect(within(result).queryByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeNull();
   expect(within(result).getByText("تعداد رزروها").parentElement?.textContent).toContain("۳");
   expect(within(result).getAllByRole("button", { name: /بررسی و تأیید رزرو/ })).toHaveLength(1);

@@ -1,6 +1,7 @@
 "use client";
 
-import { ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useId, useRef, useState } from "react";
+import { useAnchoredPopover } from "@/lib/use-anchored-popover";
 import { GuestCounter, GuestCountControls } from "./GuestCountControls";
 
 export type GuestSelectorValue<Age extends number | string = number> = {
@@ -58,41 +59,8 @@ export function GuestSelector<Age extends number | string = number>({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverId = useId();
   const popoverRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
   const [open, setOpen] = useState(false);
-
-  useLayoutEffect(() => {
-    if (!open || !floating) return;
-    const popup = popoverRef.current;
-    const trigger = triggerRef.current;
-    if (!popup || !trigger) return;
-    popup.showPopover?.();
-    const updatePosition = () => {
-      const rect = trigger.getBoundingClientRect();
-      const margin = 16;
-      const gap = 12;
-      const below = window.innerHeight - rect.bottom - gap - margin;
-      const above = rect.top - gap - margin;
-      const height = Math.min(popup.scrollHeight, window.innerHeight - margin * 2);
-      const placeBelow = below >= height || below >= above;
-      const maxHeight = Math.max(44, placeBelow ? below : above);
-      const left = Math.max(margin, Math.min(rect.right - popup.getBoundingClientRect().width,
-        window.innerWidth - popup.getBoundingClientRect().width - margin));
-      const top = placeBelow ? rect.bottom + gap : Math.max(margin, rect.top - gap - Math.min(height, maxHeight));
-      setPosition({ top, left, maxHeight });
-    };
-    updatePosition();
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updatePosition);
-    observer?.observe(popup);
-    window.addEventListener("resize", updatePosition);
-    window.addEventListener("scroll", updatePosition, true);
-    return () => {
-      observer?.disconnect();
-      if (popup.isConnected) popup.hidePopover?.();
-      window.removeEventListener("resize", updatePosition);
-      window.removeEventListener("scroll", updatePosition, true);
-    };
-  }, [open, floating]);
+  const [position, setPosition] = useAnchoredPopover(open && floating, triggerRef, popoverRef);
 
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
