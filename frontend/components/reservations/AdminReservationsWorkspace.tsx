@@ -30,7 +30,7 @@ import {
   type ReservationRefundPayload,
 } from "@/components/reservations/ReservationDetailsDialog";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
-import { AdminTaskCreateDialog } from "@/components/tasks/AdminTaskCreateDialog";
+import { AdminTaskCreateDialog, type TaskReservationContext } from "@/components/tasks/AdminTaskCreateDialog";
 import {
   apiRequest,
   ApiRequestError,
@@ -163,7 +163,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
   const [reservations, setReservations] = useState<ReservationTableItem[]>([]);
   const [selectedReservationState, setSelectedReservation] =
     useState<ReservationTableItem | null>(null);
-  const [taskReservationId, setTaskReservationId] = useState<number | null>(null);
+  const [taskReservation, setTaskReservation] = useState<TaskReservationContext | null>(null);
   const [editingReservation, setEditingReservation] =
     useState<ReservationTableItem | null>(null);
   const [draftFilters, setDraftFilters] =
@@ -1302,7 +1302,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
           canAddInternalNote={canManageReservations}
           onAssignTask={canManageReservations ? (reservation) => {
             const id = reservation.reservationId ?? reservation.id;
-            if (id) setTaskReservationId(id);
+            if (id) setTaskReservation({ reservationId: id, reservationNumber: reservation.reservationNumber, propertyName: reservation.propertyName });
           } : undefined}
           onViewVoucher={canManagePayments ? (reservation) => {
             const id = reservation.reservationId ?? reservation.id;
@@ -1335,13 +1335,13 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
               setManualPayments([]);
             }
           }}
-          open={isDetailsPage && (Boolean(selectedReservationState) || detailsLoading) && taskReservationId === null}
+          open={isDetailsPage && (Boolean(selectedReservationState) || detailsLoading) && taskReservation === null}
           reservation={selectedReservationState}
         />
 
-        {taskReservationId !== null && canManageReservations && <AdminTaskCreateDialog
-          initialReservationId={taskReservationId}
-          onClose={() => setTaskReservationId(null)}
+        {taskReservation !== null && canManageReservations && <AdminTaskCreateDialog
+          linkedReservation={taskReservation}
+          onClose={() => setTaskReservation(null)}
           onCreated={() => { router.push("/admin/tasks?scope=created"); }}
         />}
 

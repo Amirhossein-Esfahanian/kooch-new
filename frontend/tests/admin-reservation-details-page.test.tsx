@@ -101,6 +101,34 @@ describe("dedicated Admin reservation details", () => {
     expect(mocks.router.push).toHaveBeenCalledWith("/admin/reservations/37/voucher?returnTo=%2Fadmin%2Freservations%3FpropertyId%3D3%26status%3DConfirmed%26page%3D4");
   });
 
+  it("cancels task assignment back to the same activity tab and reservation without navigation or a task write", async () => {
+    mocks.query = new URLSearchParams({ returnTo: "/admin/reservations?propertyId=3&status=Confirmed&page=4" }).toString();
+    mocks.request.mockImplementation(async (path: string) => {
+      if (path === "/admin/reservations/37") return item;
+      if (path === "/admin/reservations/37/activities" || path === "/admin/manual-payments/reservation/37") return [];
+      if (path === "/admin/tasks/assignees") return [{ id: 4, displayName: "مدیر آزمون" }];
+      throw new Error(path);
+    });
+    render(<DetailsPage />);
+    await screen.findByRole("heading", { level: 1, name: /R-/ });
+    fireEvent.click(screen.getByRole("tab", { name: "فعالیت‌ها و یادداشت‌ها" }));
+    fireEvent.click(screen.getByRole("button", { name: "ارجاع کار" }));
+    const dialog = await screen.findByRole("dialog", { name: "ایجاد کار" });
+    const summary = within(dialog).getByRole("region", { name: "رزرو مرتبط" });
+    expect(within(summary).getByText("R-855759")).toBeTruthy();
+    expect(within(summary).getByText("اقامتگاه آزمون")).toBeTruthy();
+    expect(within(dialog).queryByLabelText("جستجوی رزرو (اختیاری)")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ایجاد کار" })).toBeNull());
+    expect(screen.getByRole("tab", { name: "فعالیت‌ها و یادداشت‌ها" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toContain("R-");
+    expect(screen.getByRole("link", { name: "بازگشت به رزروها" }).getAttribute("href")).toBe("/admin/reservations?propertyId=3&status=Confirmed&page=4");
+    expect(mocks.router.push).not.toHaveBeenCalled();
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/admin/reservations/37")).toHaveLength(1);
+    expect(mocks.request.mock.calls.some(([path]) => String(path).startsWith("/admin/reservations?"))).toBe(false);
+    expect(mocks.request.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
+
   it("carries the same safe list return context through the voucher route", () => {
     mocks.query = new URLSearchParams({ returnTo: "/admin/reservations?status=Confirmed&page=4" }).toString();
     render(<VoucherPage />);

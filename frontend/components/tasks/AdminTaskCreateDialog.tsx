@@ -13,7 +13,8 @@ import { apiRequest } from "@/lib/owner-api";
 type TaskPriority = "Low" | "Normal" | "High";
 export type TaskAssignee = { id: number; displayName: string };
 type AssigneeResource = { items: TaskAssignee[]; loading: boolean; error: string | null; retry: () => void };
-type ReservationOption = { reservationId: number; reservationNumber: string; propertyName: string };
+export type TaskReservationContext = { reservationId: number; reservationNumber: string; propertyName?: string | null };
+type ReservationOption = TaskReservationContext;
 type ReservationDetailOption = { id?: number; reservationId?: number; reservationNumber: string; propertyName?: string | null };
 type ReservationSearchResult = { items: ReservationOption[] };
 type CreateDraft = {
@@ -31,9 +32,9 @@ const emptyCreateDraft = (): CreateDraft => ({
 
 const errorText = (error: unknown) => error instanceof Error ? error.message : "درخواست انجام نشد. دوباره تلاش کنید.";
 
-export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId, assigneeResource }: {
+export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId, linkedReservation, assigneeResource }: {
   onClose: () => void; onCreated: () => void | Promise<void>;
-  initialReservationId?: number; assigneeResource?: AssigneeResource;
+  initialReservationId?: number; linkedReservation?: TaskReservationContext; assigneeResource?: AssigneeResource;
 }) {
   const [createDraft, setCreateDraft] = useState<CreateDraft>(emptyCreateDraft);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -42,7 +43,7 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
   const dueHintId = useId();
   const [reservationSearch, setReservationSearch] = useState("");
   const [reservationOptions, setReservationOptions] = useState<ReservationOption[]>([]);
-  const [reservationSearching, setReservationSearching] = useState(Boolean(initialReservationId));
+  const [reservationSearching, setReservationSearching] = useState(Boolean(initialReservationId && !linkedReservation));
   const [reservationSearched, setReservationSearched] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const [loadedAssignees, setLoadedAssignees] = useState<TaskAssignee[]>([]);
@@ -50,6 +51,7 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
   const [assigneeError, setAssigneeError] = useState<string | null>(null);
   const [assigneeAttempt, setAssigneeAttempt] = useState(0);
   const hasAssigneeResource = Boolean(assigneeResource);
+  const hasLinkedReservation = Boolean(linkedReservation);
 
   useEffect(() => {
     if (hasAssigneeResource) return;
@@ -68,7 +70,7 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
   const loadAssignees = () => assigneeResource ? assigneeResource.retry() : setAssigneeAttempt(value => value + 1);
 
   useEffect(() => {
-    if (!initialReservationId) return;
+    if (hasLinkedReservation || !initialReservationId) return;
     let active = true;
     void apiRequest<ReservationDetailOption>(`/admin/reservations/${initialReservationId}`)
       .then(reservation => {
@@ -80,9 +82,10 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
       .catch(error => { if (active) setReservationError(errorText(error)); })
       .finally(() => { if (active) setReservationSearching(false); });
     return () => { active = false; };
-  }, [initialReservationId]);
+  }, [initialReservationId, hasLinkedReservation]);
 
   async function searchReservations() {
+    if (linkedReservation) return;
     const query = reservationSearch.trim();
     if (!query) return;
     setReservationSearching(true);
@@ -102,7 +105,7 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
 
   async function createTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (submissionInFlight.current || reservationSearching || (initialReservationId && reservationError)) return;
+    if (submissionInFlight.current || (!linkedReservation && (reservationSearching || (initialReservationId && reservationError)))) return;
     if (!createDraft.title.trim() || !createDraft.assignedToUserId) {
       setCreateError("عنوان و مسئول کار را تعیین کنید.");
       return;
@@ -124,7 +127,7 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
           priority: createDraft.priority,
           dueAtUtc: dueAt?.toISOString() ?? null,
           assignedToUserId: Number(createDraft.assignedToUserId),
-          reservationId: createDraft.reservationId ? Number(createDraft.reservationId) : null,
+          reservationId: linkedReservation?.reservationId ?? (createDraft.reservationId ? Number(createDraft.reservationId) : null),
         }),
       });
       onClose();
@@ -180,7 +183,11 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
             </KoochField>
             {assigneesLoading && <p role="status" className="text-sm text-muted-foreground">در حال دریافت مدیران…</p>}
             {assigneesError && <div className="grid justify-items-start gap-2"><KoochAlert variant="destructive">{assigneesError}</KoochAlert><KoochButton variant="outline" onClick={() => void loadAssignees()}>تلاش دوباره</KoochButton></div>}
-            <div className="grid gap-2">
+            {linkedReservation ? <section aria-label="رزرو مرتبط" className="grid min-w-0 gap-1 rounded-lg border border-border bg-muted/30 p-3 text-sm">
+              <h3 className="font-semibold text-muted-foreground">رزرو مرتبط</h3>
+              <p className="break-words font-semibold text-foreground">{linkedReservation.reservationNumber}</p>
+              {linkedReservation.propertyName && <p className="break-words text-muted-foreground">{linkedReservation.propertyName}</p>}
+            </section> : <div className="grid gap-2">
               <KoochField label="جستجوی رزرو (اختیاری)">
                 <KoochInput value={reservationSearch} placeholder="شماره رزرو، مانند R-123456" disabled={creating || reservationSearching} onChange={(event) => { setReservationSearch(event.target.value); setReservationOptions([]); setReservationSearched(false); setCreateDraft((current) => ({ ...current, reservationId: "" })); }} />
               </KoochField>
@@ -193,11 +200,11 @@ export function AdminTaskCreateDialog({ onClose, onCreated, initialReservationId
                 </KoochSelect>
               </KoochField>}
               {reservationSearched && !reservationSearching && reservationOptions.length === 0 && !reservationError && <p className="text-xs text-muted-foreground">رزروی با این شماره پیدا نشد.</p>}
-            </div>
+            </div>}
             {createError && <KoochAlert variant="destructive">{createError}</KoochAlert>}
             <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
               <KoochButton type="button" variant="outline" disabled={creating} onClick={onClose}>انصراف</KoochButton>
-              <KoochButton type="submit" loading={creating} disabled={reservationSearching || Boolean(initialReservationId && reservationError) || assigneesLoading || Boolean(assigneesError) || !createDraft.title.trim() || !createDraft.assignedToUserId}>ایجاد کار</KoochButton>
+              <KoochButton type="submit" loading={creating} disabled={(!linkedReservation && (reservationSearching || Boolean(initialReservationId && reservationError))) || assigneesLoading || Boolean(assigneesError) || !createDraft.title.trim() || !createDraft.assignedToUserId}>ایجاد کار</KoochButton>
             </div>
           </form>
   </KoochDialog>;

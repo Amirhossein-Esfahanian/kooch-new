@@ -125,6 +125,57 @@ describe("shared Admin task creation", () => {
     expect(createCalls()).toHaveLength(0);
   });
 
+  it("shows a read-only origin summary and submits that same reservation without a reservation request", async () => {
+    render(<AdminTaskCreateDialog linkedReservation={{ reservationId: 12, reservationNumber: "R-123456", propertyName: "اقامتگاه آزمون" }}
+      assigneeResource={resource} onClose={vi.fn()} onCreated={vi.fn()} />);
+    const dialog = await readyForm();
+    const summary = within(dialog).getByRole("region", { name: "رزرو مرتبط" });
+    expect(within(summary).getByText("R-123456")).toBeTruthy();
+    expect(within(summary).getByText("اقامتگاه آزمون")).toBeTruthy();
+    expect(within(summary).queryByRole("combobox")).toBeNull();
+    expect(within(dialog).queryByLabelText("جستجوی رزرو (اختیاری)")).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "جستجوی رزرو" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "ایجاد کار" }));
+    await waitFor(() => expect(createCalls()).toHaveLength(1));
+    expect(JSON.parse(createCalls()[0][1].body).reservationId).toBe(12);
+    expect(mocks.request.mock.calls.some(([path]) => String(path).startsWith("/admin/reservations"))).toBe(false);
+  });
+
+  it("uses the new origin immediately when reservation context changes", async () => {
+    const props = { assigneeResource: resource, onClose: vi.fn(), onCreated: vi.fn() };
+    const view = render(<AdminTaskCreateDialog {...props} linkedReservation={{ reservationId: 12, reservationNumber: "R-123456", propertyName: "اقامتگاه اول" }} />);
+    const dialog = await readyForm();
+    view.rerender(<AdminTaskCreateDialog {...props} linkedReservation={{ reservationId: 37, reservationNumber: "R-855759", propertyName: "اقامتگاه دوم" }} />);
+    expect(within(dialog).getByText("R-855759")).toBeTruthy();
+    expect(within(dialog).getByText("اقامتگاه دوم")).toBeTruthy();
+    expect(within(dialog).queryByText("R-123456")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "ایجاد کار" }));
+    await waitFor(() => expect(createCalls()).toHaveLength(1));
+    expect(JSON.parse(createCalls()[0][1].body).reservationId).toBe(37);
+    expect(mocks.request.mock.calls.some(([path]) => String(path).startsWith("/admin/reservations"))).toBe(false);
+  });
+
+  it("retains optional reservation search, selection, and clearing for ordinary Tasks-page creation", async () => {
+    mocks.request.mockImplementation(async (path: string) => {
+      if (path.startsWith("/admin/reservations?")) return { items: [{ reservationId: 12, reservationNumber: "R-123456", propertyName: "اقامتگاه آزمون" }] };
+      if (path === "/admin/tasks") return { id: 7 };
+      throw new Error(path);
+    });
+    render(<AdminTaskCreateDialog assigneeResource={resource} onClose={vi.fn()} onCreated={vi.fn()} />);
+    const dialog = await readyForm();
+    fireEvent.change(within(dialog).getByLabelText("جستجوی رزرو (اختیاری)"), { target: { value: " R-123456 " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "جستجوی رزرو" }));
+    const select = await within(dialog).findByLabelText("رزرو مرتبط") as HTMLSelectElement;
+    expect(mocks.request).toHaveBeenCalledWith("/admin/reservations?reservationNumber=R-123456&page=1&pageSize=10");
+    fireEvent.change(select, { target: { value: "12" } });
+    expect(select.value).toBe("12");
+    fireEvent.change(select, { target: { value: "" } });
+    expect(select.value).toBe("");
+    fireEvent.click(within(dialog).getByRole("button", { name: "ایجاد کار" }));
+    await waitFor(() => expect(createCalls()).toHaveLength(1));
+    expect(JSON.parse(createCalls()[0][1].body).reservationId).toBeNull();
+  });
+
   it.each(["escape", "close", "backdrop"])("dismisses via %s without saving and restores focus", async method => {
     function Harness() {
       const [open, setOpen] = useState(false);
