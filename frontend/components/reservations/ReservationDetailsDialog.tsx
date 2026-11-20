@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -34,6 +34,7 @@ import { toPersianDigits } from "@/lib/persian-digits";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
 import cancellationStyles from "./ReservationCancellationDialog.module.css";
+import { KoochTable, KoochTableHeader, KoochTableBody, KoochTableRow, KoochTableHead, KoochTableCell } from "@/components/KoochTable";
 
 interface ReservationDetailsDialogProps {
   presentation?: "dialog" | "page";
@@ -881,7 +882,12 @@ function ReservationCancellationDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const reviewRef = useRef<HTMLButtonElement>(null);
   const [confirmationReady, setConfirmationReady] = useState(false);
-  const previousConfirmation = useRef(false);
+  const editRef = useRef<HTMLButtonElement>(null);
+  const [editingFinancial, setEditingFinancial] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const detailsId = useId();
+  const previousView = useRef("form");
+  const financialSnapshot = useRef<ReturnType<typeof financialValues> | null>(null);
   const [serverError, setServerError] = useState("");
   const [reason, setReason] = useState<ReservationCancellationReason | "">("");
   const [explanation, setExplanation] = useState("");
@@ -933,16 +939,71 @@ function ReservationCancellationDialog({
     : grossCents !== null && splitCents === grossCents;
   const displayMoney = (amount: number | null, code = currency) =>
     toPersianDigits(formatCurrency(amount, { currencyLabel: code === "IRR" ? "ریال" : code || "واحد نامشخص" }));
-  const invalidateOperation = () => { operationKeyRef.current = null; setServerError(""); };
+  const financialMoney = (amount: number | null | undefined) => amount == null ? "نامشخص" : displayMoney(amount);
+  const invalidateOperation = () => {
+    if (!editingFinancial) { operationKeyRef.current = null; setServerError(""); }
+  };
+
+  function financialValues() {
+    return { manual, guestRefund, propertyShare, koochShare, financialNote, forfeited, sourceValues };
+  }
+
+  function editFinancial() {
+    financialSnapshot.current = financialValues();
+    setManual(true);
+    setValidationAttempted(false);
+    setEditingFinancial(true);
+  }
+
+  function discardFinancial() {
+    const saved = financialSnapshot.current;
+    if (saved) {
+      setManual(saved.manual); setGuestRefund(saved.guestRefund);
+      setPropertyShare(saved.propertyShare); setKoochShare(saved.koochShare);
+      setFinancialNote(saved.financialNote); setForfeited(saved.forfeited);
+      setSourceValues(saved.sourceValues);
+    }
+    setValidationAttempted(false);
+    setEditingFinancial(false);
+    financialSnapshot.current = null;
+  }
+
+  function applyFinancial() {
+    setValidationAttempted(true);
+    if (grossCents === null || (manual || fundingManual) && !validSplit) return;
+    if (JSON.stringify(financialValues()) !== JSON.stringify(financialSnapshot.current)) {
+      operationKeyRef.current = null;
+      setServerError("");
+    }
+    financialSnapshot.current = null;
+    setEditingFinancial(false);
+    setValidationAttempted(false);
+  }
+
+  const hasAppliedManual = (manual || fundingManual) && validSplit;
+  const serverAllocation = financial?.mode != null;
+  const refundAmount = manual || fundingManual
+    ? hasAppliedManual ? fundingManual ? (cashTotal + walletTotal) / 100 : guestCents! / 100 : null
+    : financial?.guestRefundAmount != null
+      ? financial.mode === "ManualFundingV2"
+        ? financial.guestWalletRestoreAmount != null ? financial.guestRefundAmount + financial.guestWalletRestoreAmount : null
+        : financial.guestRefundAmount
+      : null;
+  const allocatedProperty = hasAppliedManual ? propertyCents! / 100 : financial?.finalPropertyShare;
+  const allocatedKooch = hasAppliedManual ? koochCents! / 100 : financial?.finalKoochShare;
+  const allocatedForfeit = hasAppliedManual && fundingManual ? forfeitedCents! / 100 : financial?.forfeitedAmount;
+  const assignedCents = fundingManual ? fundingAmountsKnown ? fundingTotal : null : splitCents;
 
   useEffect(() => {
-    if (previousConfirmation.current === confirmationReady) return;
-    previousConfirmation.current = confirmationReady;
+    const view = editingFinancial ? "editor" : confirmationReady ? "confirmation" : "form";
+    const previous = previousView.current;
+    if (previous === view) return;
+    previousView.current = view;
     const frame = window.requestAnimationFrame(() => {
-      (confirmationReady ? cancelRef : reviewRef).current?.focus();
+      (view !== "form" ? cancelRef : previous === "editor" ? editRef : reviewRef).current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [confirmationReady]);
+  }, [confirmationReady, editingFinancial]);
 
   function validateCancellation() {
     const trimmedExplanation = explanation.trim();
@@ -960,7 +1021,7 @@ function ReservationCancellationDialog({
   }
 
   async function confirmCancellation() {
-    if (!confirmationReady || submittingRef.current) return;
+    if (!confirmationReady || editingFinancial || submittingRef.current) return;
     if (!validateCancellation() || !reason) {
       setConfirmationReady(false);
       return;
@@ -1025,17 +1086,105 @@ function ReservationCancellationDialog({
     </div>)}
   </section>;
 
+  const financialEditor = <section className={cancellationStyles.body} aria-label="تسویه مالی لغو رزرو">
+    <p className="text-sm text-muted-foreground">این ویرایش فقط تخصیص محلی مبالغ است؛ لغو یا بازپرداختی انجام نمی‌شود.</p>
+    {grossCents === null && <KoochAlert variant="warning" title="اطلاعات مالی کامل نیست">مبلغ پرداخت‌شده در دسترس نیست؛ جزئیات رزرو را دوباره دریافت کنید.</KoochAlert>}
+    {!requiresManual && <KoochButton type="button" size="sm" variant="outline" className="justify-self-start"
+      onClick={() => setManual(current => !current)}>{manual ? "بازگردانی پیش‌فرض سرور" : "تعیین دستی مبالغ"}</KoochButton>}
+    {!manual && !fundingManual && <p className="text-sm">تخصیص پیش‌فرض سرور اعمال خواهد شد؛ نتیجهٔ نهایی پس از ثبت مشخص می‌شود.</p>}
+              {manual && !fundingManual && (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      ["مبلغ بازپرداخت به مهمان", guestRefund, setGuestRefund, guestCents],
+                      ["سهم نهایی اقامتگاه", propertyShare, setPropertyShare, propertyCents],
+                      ["سهم نهایی کوچ", koochShare, setKoochShare, koochCents],
+                    ] as const).map(([label, value, setValue, cents]) => (
+                      <KoochField key={label} label={label} required
+                        error={validationAttempted && cents === null ? "مبلغ معتبر و نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
+                        <KoochInput type="number" inputMode="decimal" min="0" step="0.01" value={value}
+                          onChange={(event) => { invalidateOperation(); setValue(event.target.value); }} />
+                      </KoochField>
+                    ))}
+                  </div>
+
+                </>
+              )}
+              {fundingManual && (
+                <>
+                  <p className="text-sm text-muted-foreground">برای هر منبع، همه مبالغ را مشخص کنید؛ برای گزینه‌های بدون سهم، صفر وارد کنید.</p>
+                  {sourceRows.map(({ source, values, valid }) => (
+                    <fieldset key={source.sourceToken} className="grid gap-3 border-t border-border pt-3">
+                      <legend className="font-medium text-foreground">
+                        {fundingSourceLabel(source)}
+                        {" — "}{displayMoney(source.fundedAmount)}
+                      </legend>
+                      {(source.reference || source.reason) && <p className="text-sm text-muted-foreground">{source.reference} {source.reason}</p>}
+                      {source.paymentMethod && <p className="text-sm text-muted-foreground">روش پرداخت: {source.paymentMethod === "Online" ? "آنلاین" : "دستی"} — {source.paymentStatus === "Successful" ? "موفق" : source.paymentStatus}</p>}
+                      {source.expiresAtUtc && <p className="text-sm">تاریخ انقضا: {formatDateTime(source.expiresAtUtc)}</p>}
+                      {!source.withdrawable && <p className="text-sm text-muted-foreground">اعتبار غیرنقدی قابل بازپرداخت نقدی نیست.</p>}
+                      {source.expired && <p className="text-sm text-destructive">اعتبار بازگردانده‌شده منقضی شده و قابل استفاده نخواهد بود.</p>}
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        {([
+                          ...(source.maxCashRefundAmount > 0 ? [["cash", "بازپرداخت نقدی"] as const] : []),
+                          ...(source.maxWalletRestoreAmount > 0 ? [["wallet", "بازگردانی به منبع اصلی کیف پول"] as const] : []),
+                          ["retained", "بازگردانده نمی‌شود"] as const,
+                        ]).map(([key, label]) => (
+                          <KoochField key={key} label={label} required error={(validationAttempted || values[key]) && moneyCents(values[key]) === null ? "مبلغ نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
+                            <KoochInput type="number" min="0" step="0.01" inputMode="decimal" value={values[key]}
+                              onChange={(e) => { invalidateOperation(); setSourceValues((current) => ({
+                                ...current, [source.sourceToken]: { ...values, [key]: e.target.value },
+                              })); }} />
+                          </KoochField>
+                        ))}
+                      </div>
+                      {!valid && (validationAttempted || Object.values(values).some(Boolean)) && <p role="status" className="text-sm text-destructive">مبالغ باید در محدودهٔ مجاز باشند و جمع این منبع دقیقاً برابر {displayMoney(source.fundedAmount)} باشد.</p>}
+                    </fieldset>
+                  ))}
+                  <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-3">
+                    {([
+                      ["سهم نهایی اقامتگاه", propertyShare, setPropertyShare],
+                      ["سهم نهایی کوچ", koochShare, setKoochShare],
+                      ["اعتبار/مبلغ سوخت‌شده", forfeited, setForfeited],
+                    ] as const).map(([label, value, setValue]) => (
+                      <KoochField key={label} label={label} required error={(validationAttempted || value) && moneyCents(value) === null ? "مبلغ نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
+                        <KoochInput type="number" min="0" step="0.01" inputMode="decimal" value={value}
+                          onChange={(e) => { invalidateOperation(); setValue(e.target.value); }} />
+                      </KoochField>
+                    ))}
+                  </div>
+                </>
+              )}
+
+    <KoochField label="یادداشت تصمیم مالی (اختیاری)">
+      <KoochTextarea rows={2} maxLength={2000} value={financialNote}
+        onChange={event => setFinancialNote(event.target.value)} />
+    </KoochField>
+    {(manual || fundingManual) && <div className={cancellationStyles.balance} aria-live="polite">
+      <dl className="grid gap-2 text-sm">
+        <div><dt>مبلغ پرداخت‌شده</dt><dd>{financialMoney(financial?.grossPaidAmount)}</dd></div>
+        <div><dt>جمع تخصیص</dt><dd>{financialMoney(assignedCents === null ? null : assignedCents / 100)}</dd></div>
+        <div><dt>اختلاف</dt><dd>{financialMoney(grossCents !== null && assignedCents !== null ? (grossCents - assignedCents) / 100 : null)}</dd></div>
+      </dl>
+      {validationAttempted && !validSplit && <p role="alert" className="text-sm text-destructive">همهٔ مبالغ را تکمیل کنید؛ جمع تخصیص باید دقیقاً برابر مبلغ پرداخت‌شده باشد.</p>}
+    </div>}
+  </section>;
+
   return (
-    <KoochDialog open title={confirmationReady ? "تأیید نهایی لغو رزرو" : <>لغو رزرو <span className={cancellationStyles.reference}>{reservation.reservationNumber}</span></>}
+    <KoochDialog open title={editingFinancial ? "ویرایش مبالغ لغو رزرو" : confirmationReady ? "تأیید نهایی لغو رزرو" : <>لغو رزرو <span className={cancellationStyles.reference}>{reservation.reservationNumber}</span></>}
       size="sm" className={cancellationStyles.dialog} bodyClassName={cancellationStyles.dialogBody}
       closeDisabled={submitting} initialFocusRef={cancelRef}
       onOpenChange={(open) => {
         if (!open && !submittingRef.current) {
-          if (confirmationReady) setConfirmationReady(false);
+          if (editingFinancial) discardFinancial();
+          else if (confirmationReady) setConfirmationReady(false);
           else onClose();
         }
       }}
-      footer={<>
+      footer={editingFinancial ? <>
+        <KoochButton key="apply" type="button" onClick={applyFinancial}>اعمال مبالغ</KoochButton>
+        <KoochButton ref={cancelRef} type="button" variant="outline" onClick={discardFinancial}>بازگشت</KoochButton>
+      </> : <>
         <KoochButton key={confirmationReady ? "confirm" : "review"} ref={reviewRef} type="button" variant="destructive" loading={submitting}
           disabled={fundingManual && !validSplit || paid && grossCents === null}
           onClick={() => {
@@ -1056,7 +1205,7 @@ function ReservationCancellationDialog({
           {paid && <div><dt className="text-muted-foreground">تخصیص مالی درخواستی</dt><dd>{manual || fundingManual ? "تخصیص دستی واردشده" : "پیش‌فرض سرور"}</dd></div>}
         </dl>
         {paid && <p className="text-sm text-muted-foreground">نتیجهٔ مالی پس از ثبت از پاسخ سرور نمایش داده می‌شود. لغو، به معنی انجام بازپرداخت نقدی نیست.</p>}
-      </div> :
+      </div> : editingFinancial ? financialEditor :
       <fieldset aria-label="اطلاعات لغو رزرو" disabled={submitting} className={cancellationStyles.fields}>
         <div className={cancellationStyles.body}>
           {serverError && <KoochAlert variant="destructive" title="لغو رزرو انجام نشد">{serverError}</KoochAlert>}
@@ -1101,125 +1250,47 @@ function ReservationCancellationDialog({
             />
           </KoochField>
 
-          {paid && (
-            <section className={cancellationStyles.impact} aria-label="تسویه مالی لغو رزرو">
-              <h3 className="font-semibold text-foreground">تسویه مالی لغو رزرو</h3>
-              {funding && (
-                <dl className="grid gap-2 text-sm sm:grid-cols-2">
-                  {[["پرداخت خارجی", funding.externalAmount], ["کیف پول", funding.walletAmount],
-                    ["اعتبار قابل برداشت", funding.withdrawableWalletAmount], ["اعتبار غیرقابل برداشت", funding.nonWithdrawableWalletAmount]
-                  ].map(([label, amount]) => <div key={String(label)}><dt>{label}</dt><dd>{displayMoney(Number(amount))}</dd></div>)}
-                </dl>
-              )}
-              {funding && !fundingManual && (
-                <section className="grid gap-2 border-t border-border pt-3 text-sm" aria-label="منابع پرداخت">
-                  {funding.sources.map((source) => (
-                    <div key={source.sourceToken} className="flex flex-wrap gap-x-3 gap-y-1">
-                      <span className="font-medium">{fundingSourceLabel(source)}</span>
-                      <span>{displayMoney(source.fundedAmount)}</span>
-                      {source.expiresAtUtc && <span>تاریخ انقضا: {formatDateTime(source.expiresAtUtc)}</span>}
-                      {source.expired && <span className="text-destructive">منقضی‌شده</span>}
-                      <span className="text-muted-foreground">
-                        گزینه‌ها: {source.maxCashRefundAmount > 0 ? "بازپرداخت نقدی، " : ""}{source.maxWalletRestoreAmount > 0 ? "بازگردانی به منبع اصلی کیف پول، " : ""}بازگردانده نمی‌شود
-                      </span>
-                    </div>
-                  ))}
-                </section>
-              )}
-              {!requiresManual && <p className="text-sm text-muted-foreground">
-                در حالت پیش‌فرض، کل مبلغ پرداخت‌شده برای بازپرداخت نقدی تعیین می‌شود و سهم نهایی اقامتگاه و کوچ صفر است. ثبت لغو به معنی انجام بازپرداخت نقدی نیست.
-              </p>}
-              {!requiresManual && <KoochCheckbox checked={manual} label="می‌خواهم مبالغ را دستی تعیین کنم"
-                onChange={(event) => { invalidateOperation(); setManual(event.target.checked); }} />}
-              {manual && !fundingManual && (
-                <>
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {([
-                      ["مبلغ بازپرداخت به مهمان", guestRefund, setGuestRefund, guestCents],
-                      ["سهم نهایی اقامتگاه", propertyShare, setPropertyShare, propertyCents],
-                      ["سهم نهایی کوچ", koochShare, setKoochShare, koochCents],
-                    ] as const).map(([label, value, setValue, cents]) => (
-                      <KoochField key={label} label={label} required
-                        error={validationAttempted && cents === null ? "مبلغ معتبر و نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
-                        <KoochInput type="number" inputMode="decimal" min="0" step="0.01" value={value}
-                          onChange={(event) => { invalidateOperation(); setValue(event.target.value); }} />
-                      </KoochField>
-                    ))}
-                  </div>
-                  <div className="grid gap-1 text-sm text-foreground" aria-live="polite">
-                    <p>مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}</p>
-                    <p>بازپرداخت مهمان: {displayMoney(guestCents === null ? null : guestCents / 100)}</p>
-                    <p>سهم نهایی اقامتگاه: {displayMoney(propertyCents === null ? null : propertyCents / 100)}</p>
-                    <p>سهم نهایی کوچ: {displayMoney(koochCents === null ? null : koochCents / 100)}</p>
-                    <p>جمع تخصیص: {displayMoney(splitCents === null ? null : splitCents / 100)}</p>
-                    {validationAttempted && splitCents !== null && !validSplit && (
-                      <p className="text-destructive">جمع مبالغ باید دقیقاً برابر مبلغ پرداخت‌شده باشد.</p>
-                    )}
-                  </div>
-                </>
-              )}
-              {fundingManual && (
-                <>
-                  <p className="text-sm text-muted-foreground">برای هر منبع، همه مبالغ را مشخص کنید؛ برای گزینه‌های بدون سهم، صفر وارد کنید.</p>
-                  {sourceRows.map(({ source, values, valid }) => (
-                    <fieldset key={source.sourceToken} className="grid gap-3 border-t border-border pt-3">
-                      <legend className="font-medium text-foreground">
-                        {fundingSourceLabel(source)}
-                        {" — "}{displayMoney(source.fundedAmount)}
-                      </legend>
-                      {(source.reference || source.reason) && <p className="text-sm text-muted-foreground">{source.reference} {source.reason}</p>}
-                      {source.paymentMethod && <p className="text-sm text-muted-foreground">روش پرداخت: {source.paymentMethod === "Online" ? "آنلاین" : "دستی"} — {source.paymentStatus === "Successful" ? "موفق" : source.paymentStatus}</p>}
-                      {source.expiresAtUtc && <p className="text-sm">تاریخ انقضا: {formatDateTime(source.expiresAtUtc)}</p>}
-                      {!source.withdrawable && <p className="text-sm text-muted-foreground">اعتبار غیرنقدی قابل بازپرداخت نقدی نیست.</p>}
-                      {source.expired && <p className="text-sm text-destructive">اعتبار بازگردانده‌شده منقضی شده و قابل استفاده نخواهد بود.</p>}
-                      <div className="grid gap-3 sm:grid-cols-3">
-                        {([
-                          ...(source.maxCashRefundAmount > 0 ? [["cash", "بازپرداخت نقدی"] as const] : []),
-                          ...(source.maxWalletRestoreAmount > 0 ? [["wallet", "بازگردانی به منبع اصلی کیف پول"] as const] : []),
-                          ["retained", "بازگردانده نمی‌شود"] as const,
-                        ]).map(([key, label]) => (
-                          <KoochField key={key} label={label} required error={values[key] && moneyCents(values[key]) === null ? "مبلغ نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
-                            <KoochInput type="number" min="0" step="0.01" inputMode="decimal" value={values[key]}
-                              onChange={(e) => { invalidateOperation(); setSourceValues((current) => ({
-                                ...current, [source.sourceToken]: { ...values, [key]: e.target.value },
-                              })); }} />
-                          </KoochField>
-                        ))}
-                      </div>
-                      {!valid && <p role="status" className="text-sm text-destructive">جمع مبالغ این منبع باید دقیقاً برابر {displayMoney(source.fundedAmount)} باشد.</p>}
-                    </fieldset>
-                  ))}
-                  <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-3">
-                    {([
-                      ["سهم نهایی اقامتگاه", propertyShare, setPropertyShare],
-                      ["سهم نهایی کوچ", koochShare, setKoochShare],
-                      ["اعتبار/مبلغ سوخت‌شده", forfeited, setForfeited],
-                    ] as const).map(([label, value, setValue]) => (
-                      <KoochField key={label} label={label} required error={value && moneyCents(value) === null ? "مبلغ نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
-                        <KoochInput type="number" min="0" step="0.01" inputMode="decimal" value={value}
-                          onChange={(e) => { invalidateOperation(); setValue(e.target.value); }} />
-                      </KoochField>
-                    ))}
-                  </div>
-                  <dl className="grid gap-2 border-t border-border pt-3 text-sm" aria-live="polite">
-                    {([
-                      ["مبلغ پرداخت‌شده", grossCents],
-                      ["بازپرداخت نقدی به مهمان (تخصیص درخواستی)", sourceRows.length > 0 && sourceRows.every(row => row.cash !== null) ? cashTotal : null],
-                      ["بازگردانی به منابع اصلی کیف پول (تخصیص درخواستی)", sourceRows.length > 0 && sourceRows.every(row => row.wallet !== null) ? walletTotal : null],
-                      ["سهم نهایی اقامتگاه", propertyCents], ["سهم نهایی کوچ", koochCents],
-                      ["اعتبار/مبلغ سوخت‌شده", forfeitedCents],
-                      ["اختلاف", grossCents !== null && fundingAmountsKnown ? grossCents - fundingTotal : null],
-                    ] as Array<[string, number | null]>).map(([label, amount]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{displayMoney(amount === null ? null : amount / 100)}</dd></div>)}
-                  </dl>
-                  {!validSplit && <p role="status" className="text-sm text-destructive">همه منابع و سهم‌ها را تکمیل کنید؛ اختلاف نهایی باید صفر باشد.</p>}
-                </>
-              )}
-              <KoochField label="یادداشت تصمیم مالی (اختیاری)">
-                <KoochTextarea maxLength={2000} value={financialNote}
-                  onChange={(event) => { invalidateOperation(); setFinancialNote(event.target.value); }} />
-              </KoochField>
-            </section>
-          )}
+          {paid && <section className={cancellationStyles.impact} aria-label="تسویه مالی لغو رزرو">
+            <div className={cancellationStyles.financialHeader}>
+              <div className="grid gap-1">
+                <span className="text-xs text-muted-foreground">مبلغ تعیین‌شده برای بازپرداخت</span>
+                <strong data-testid="cancellation-refund-amount">{financialMoney(refundAmount)}</strong>
+              </div>
+              <KoochButton ref={editRef} type="button" size="sm" variant="outline" onClick={editFinancial}>ویرایش مبالغ</KoochButton>
+            </div>
+            <p className="text-xs text-muted-foreground">جمع بازپرداخت نقدی و بازگردانی به منابع اصلی کیف پول؛ این مبلغ به معنی انجام بازپرداخت نیست.</p>
+            <KoochButton type="button" size="sm" variant="ghost" className="justify-self-start underline underline-offset-4"
+              aria-expanded={detailsOpen} aria-controls={detailsId} onClick={() => setDetailsOpen(current => !current)}>
+              {detailsOpen ? "بستن جزئیات" : "مشاهدهٔ جزئیات"}
+            </KoochButton>
+            <div id={detailsId} hidden={!detailsOpen}>
+              {funding?.sources.length ? <KoochTable role="table" className={cancellationStyles.sourcesTable} aria-label="جزئیات تخصیص منابع پرداخت">
+                <KoochTableHeader><KoochTableRow>
+                  {["منبع", "مبلغ پرداخت‌شده", "بازپرداخت نقدی", "بازگردانی به منبع اصلی کیف پول", "مبلغ بازگردانده‌نشده"].map(label =>
+                    <KoochTableHead key={label}>{label}</KoochTableHead>)}
+                </KoochTableRow></KoochTableHeader>
+                <KoochTableBody role="rowgroup">{sourceRows.map(({ source, cash, wallet, retained }) => {
+                  const values: Array<[string, ReactNode]> = [
+                    ["منبع", <><strong>{fundingSourceLabel(source)}</strong>
+                      {source.expiresAtUtc && <span className="block text-xs">انقضا: {formatDateTime(source.expiresAtUtc)}</span>}
+                      {source.expired && <span className="block text-xs text-destructive">منقضی‌شده</span>}</>],
+                    ["مبلغ پرداخت‌شده", financialMoney(source.fundedAmount)],
+                    ["بازپرداخت نقدی", financialMoney(hasAppliedManual && fundingManual ? cash! / 100 : serverAllocation ? source.cashRefundAmount : null)],
+                    ["بازگردانی به منبع اصلی کیف پول", financialMoney(hasAppliedManual && fundingManual ? wallet! / 100 : serverAllocation ? source.walletRestoreAmount : null)],
+                    ["مبلغ بازگردانده‌نشده", financialMoney(hasAppliedManual && fundingManual ? retained! / 100 : serverAllocation ? source.notReturnedAmount : null)],
+                  ];
+                  return <KoochTableRow role="row" key={source.sourceToken}>{values.map(([label, value]) =>
+                    <KoochTableCell role="cell" key={label}><span className={cancellationStyles.mobileLabel} aria-hidden="true">{label}</span><span>{value}</span></KoochTableCell>)}</KoochTableRow>;
+                })}</KoochTableBody>
+              </KoochTable> : <p className="text-sm text-muted-foreground">جزئیات منابع پرداخت در پاسخ سرور موجود نیست.</p>}
+              <dl className={cancellationStyles.finalShares} aria-label="تخصیص نهایی">
+                {[["سهم نهایی اقامتگاه", allocatedProperty], ["سهم نهایی کوچ", allocatedKooch],
+                  ...(fundingManual || financial?.mode === "ManualFundingV2" ? [["اعتبار/مبلغ سوخت‌شده", allocatedForfeit]] : []),
+                ].map(([label, amount]) => <div key={String(label)}><dt>{label}</dt><dd>{financialMoney(typeof amount === "number" ? amount : null)}</dd></div>)}
+              </dl>
+              {financialNote.trim() && <p className="mt-3 whitespace-pre-wrap break-words text-sm">یادداشت مالی: {financialNote.trim()}</p>}
+            </div>
+          </section>}
 
           <section className={cancellationStyles.consequences} aria-label="پیامدهای لغو">
             <h3 className="font-semibold">پیامدهای لغو</h3>

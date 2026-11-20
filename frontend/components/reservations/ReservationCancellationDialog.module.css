@@ -21,6 +21,14 @@
 .property { grid-column: 1 / -1; font-weight: 600; }
 .reference { display: block; color: var(--muted-foreground); font-size: .8125rem; font-weight: 400; }
 .impact { display: grid; gap: .75rem; }
+.financialHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
+.financialHeader strong { font-size: 1rem; font-variant-numeric: tabular-nums; }
+.sourcesTable[aria-label] { min-width: 0; table-layout: fixed; font-size: .75rem; }
+.sourcesTable th, .sourcesTable td { padding: .5rem; white-space: normal; overflow-wrap: anywhere; }
+.mobileLabel { display: none; }
+.finalShares { display: grid; gap: .5rem; margin-block-start: .75rem; padding-block-start: .75rem; border-block-start: 1px solid var(--border); font-size: .8125rem; }
+.finalShares > div, .balance dl > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.balance { display: grid; gap: .5rem; border-block-start: 1px solid var(--border); padding-block-start: .75rem; }
 .consequences {
   display: grid;
   gap: .5rem;
@@ -34,4 +42,11 @@
 @media (max-width: 400px) {
   .summary { grid-template-columns: 1fr; }
   .dialogBody { padding: 1rem; }
+}
+@media (max-width: 639px) {
+  .sourcesTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .sourcesTable tbody { display: block; }
+  .sourcesTable tbody tr { display: grid; padding: .5rem; }
+  .sourcesTable td { display: flex; align-items: start; justify-content: space-between; gap: .75rem; padding: .25rem; }
+  .mobileLabel { display: inline; color: var(--muted-foreground); }
 }

@@ -43,6 +43,7 @@ const funding = {
 };
 
 function fillFundingSplit() {
+  openFinancialEditor();
   const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
   const change = (root: HTMLElement, label: string, value: string) => fireEvent.change(within(root).getByLabelText(label, { exact: false }), { target: { value } });
   change(groups[0], "بازپرداخت نقدی", "300");
@@ -72,10 +73,12 @@ describe("Admin funding-aware cancellation V2", () => {
     expect(within(summary).getByText("تایید شده")).toBeTruthy();
     expect(within(summary).queryByText("واحد پول")).toBeNull();
     expect(within(summary).getByText("۹۰۰۰ واحد")).toBeTruthy();
-    const sources = screen.getByRole("region", { name: "منابع پرداخت" });
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("نامشخص");
+    fireEvent.click(screen.getByRole("button", { name: "مشاهدهٔ جزئیات" }));
+    const sources = screen.getByRole("table", { name: "جزئیات تخصیص منابع پرداخت" });
     expect(within(sources).getByText("پرداخت خارجی")).toBeTruthy();
-    expect(within(sources).getByText(/بازپرداخت نقدی، بازگردانده نمی‌شود/)).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "می‌خواهم مبالغ را دستی تعیین کنم" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ویرایش مبالغ" })).toBeTruthy();
     fillCancellation();
     confirmCancellation();
     await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
@@ -92,18 +95,22 @@ describe("Admin funding-aware cancellation V2", () => {
     renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: {
       ...financial, funding: walletFunding } }) });
     await openCancellation();
+    expect((screen.getByRole("button", { name: "تأیید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    openFinancialEditor();
     const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
     expect(groups).toHaveLength(2);
     expect(within(groups[0]).getByLabelText(/بازپرداخت نقدی/)).toBeTruthy();
     expect(within(groups[0]).getByLabelText(/بازگردانی به منبع اصلی کیف پول/)).toBeTruthy();
     expect(within(groups[1]).queryByLabelText(/بازپرداخت نقدی/)).toBeNull();
-    expect((screen.getByRole("button", { name: "تأیید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getByRole("dialog", { name: "ویرایش مبالغ لغو رزرو" })).toBeTruthy();
   });
 
   it("renders authoritative funding capabilities and expiry without an automatic wallet decision", async () => {
     renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
     await openCancellation();
     expect(screen.queryByRole("checkbox")).toBeNull();
+    openFinancialEditor();
     const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
     expect(groups).toHaveLength(3);
     expect(within(groups[0]).queryByLabelText(/بازگردانی به منبع اصلی کیف پول/)).toBeNull();
@@ -111,18 +118,18 @@ describe("Admin funding-aware cancellation V2", () => {
     expect(within(groups[1]).getByLabelText(/بازگردانی به منبع اصلی کیف پول/)).toBeTruthy();
     expect(within(groups[2]).queryByLabelText(/بازپرداخت نقدی/)).toBeNull();
     expect(within(groups[2]).getByText(/منقضی شده و قابل استفاده نخواهد بود/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "تأیید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getByRole("dialog", { name: "ویرایش مبالغ لغو رزرو" })).toBeTruthy();
   });
 
   it("reconciles live, confirms exact totals and sends only opaque source decisions", async () => {
     const onCancel = vi.fn().mockResolvedValue(undefined);
     renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
     await openCancellation(); fillCancellation(); fillFundingSplit();
-    const confirmation = screen.getByRole("dialog", { name: "لغو رزرو R-123456" });
-    expect(within(confirmation).getByRole("region", { name: "پیامدهای لغو" })).toBeTruthy();
-    expect(within(confirmation).getAllByText("۴۰۰ واحد").length).toBeGreaterThan(0);
-    expect(within(confirmation).getAllByText("۳۰۰ واحد").length).toBeGreaterThan(0);
-    expect(within(confirmation).getAllByText("بازگردانده نمی‌شود").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("۷۰۰ واحد");
+    fireEvent.click(screen.getByRole("button", { name: "مشاهدهٔ جزئیات" }));
+    expect(screen.getByRole("table", { name: "جزئیات تخصیص منابع پرداخت" })).toBeTruthy();
     expect(onCancel).not.toHaveBeenCalled();
     confirmCancellation();
     await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
@@ -143,7 +150,8 @@ describe("Admin funding-aware cancellation V2", () => {
     if (kind === "sum") fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "101" } });
     else fireEvent.change(within(within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group")[0]).getByLabelText(/بازپرداخت نقدی/),
       { target: { value: kind === "source" ? "299" : kind === "negative" ? "-1" : "299.999" } });
-    expect((screen.getByRole("button", { name: "تأیید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getByRole("dialog", { name: "ویرایش مبالغ لغو رزرو" })).toBeTruthy();
     expect(onCancel).not.toHaveBeenCalled();
   });
 
@@ -205,13 +213,20 @@ function fillCancellation() {
   fireEvent.change(screen.getByLabelText(/توضیحات لغو/), { target: { value: "درخواست مهمان" } });
 }
 
+function openFinancialEditor() {
+  const edit = screen.queryByRole("button", { name: "ویرایش مبالغ" });
+  if (edit) fireEvent.click(edit);
+}
+
 function confirmCancellation() {
+  const apply = screen.queryByRole("button", { name: "اعمال مبالغ" });
+  if (apply) fireEvent.click(apply);
   fireEvent.click(screen.getByRole("button", { name: "تأیید و لغو رزرو" }));
   fireEvent.click(screen.getByRole("button", { name: "لغو قطعی رزرو" }));
 }
 
 function setManualSplit(guest: string, property: string, kooch: string) {
-  fireEvent.click(screen.getByRole("checkbox", { name: "می‌خواهم مبالغ را دستی تعیین کنم" }));
+  openFinancialEditor();
   fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: guest } });
   fireEvent.change(screen.getByLabelText(/سهم نهایی اقامتگاه/), { target: { value: property } });
   fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: kooch } });
@@ -224,12 +239,116 @@ describe("Admin reservation cancellation financial UI", () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
+  it("collapses source details by default, expands a read-only table and does not infer a zero allocation", async () => {
+    const onCancel = vi.fn();
+    renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
+    await openCancellation();
+    const disclosure = screen.getByRole("button", { name: "مشاهدهٔ جزئیات" });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("نامشخص");
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    const table = screen.getByRole("table", { name: "جزئیات تخصیص منابع پرداخت" });
+    expect(within(table).getAllByRole("columnheader")).toHaveLength(5);
+    const rows = within(table).getAllByRole("row").slice(1);
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]).getByText("۴۰۰ واحد")).toBeTruthy();
+    expect(within(rows[0]).getAllByText("نامشخص")).toHaveLength(3);
+    expect(within(table).queryByRole("spinbutton")).toBeNull();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    openFinancialEditor();
+    expect(screen.queryByRole("table")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+    fireEvent.click(screen.getByRole("button", { name: "بستن جزئیات" }));
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("applies a real zero refund locally and discards subsequent draft changes without losing guest text", async () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    renderDialog({ presentation: "page", onCancel });
+    await openCancellation(); fillCancellation();
+    setManualSplit("0", "1000", "0");
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)"), { target: { value: "تصمیم اعمال‌شده" } });
+    expect(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)").getAttribute("rows")).toBe("2");
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("۰ واحد");
+    expect(onCancel).not.toHaveBeenCalled();
+    openFinancialEditor();
+    fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: "250" } });
+    fireEvent.change(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)"), { target: { value: "پیش‌نویس ذخیره‌نشده" } });
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "ویرایش مبالغ" })));
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("۰ واحد");
+    expect(screen.getByLabelText(/توضیحات لغو/)).toHaveProperty("value", "درخواست مهمان");
+    openFinancialEditor();
+    expect(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/)).toHaveProperty("value", "0");
+    expect(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)")).toHaveProperty("value", "تصمیم اعمال‌شده");
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(onCancel).not.toHaveBeenCalled();
+    confirmCancellation();
+    await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
+    expect(onCancel.mock.calls[0][1].financialResolution).toEqual({ mode: "ManualOverride", guestRefundAmount: 0,
+      finalPropertyShare: 1000, finalKoochShare: 0, note: "تصمیم اعمال‌شده" });
+  });
+
+  it("returns from an unapplied editor to server defaults and keeps cancellation reason and explanation", async () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    renderDialog({ onCancel });
+    await openCancellation(); fillCancellation();
+    setManualSplit("500", "300", "200");
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("نامشخص");
+    expect(screen.getByLabelText(/دلیل لغو/)).toHaveProperty("value", "GuestRequest");
+    expect(onCancel).not.toHaveBeenCalled();
+    confirmCancellation();
+    await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
+    expect(onCancel.mock.calls[0][1].financialResolution).toEqual({ mode: "AutomaticFullRefundV1" });
+  });
+
+  it("preserves an applied mixed allocation when edits are discarded and forbids unsupported default mode", async () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
+    await openCancellation(); fillCancellation(); fillFundingSplit();
+    expect(screen.queryByRole("button", { name: "بازگردانی پیش‌فرض سرور" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("۷۰۰ واحد");
+    openFinancialEditor();
+    fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "999" } });
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getAllByText("جمع تخصیص")).toHaveLength(1);
+    expect(screen.getByRole("dialog", { name: "ویرایش مبالغ لغو رزرو" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("۷۰۰ واحد");
+    confirmCancellation();
+    await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
+    expect(onCancel.mock.calls[0][1].financialResolution.finalKoochShare).toBe(100);
+  });
+
+  it("does not rotate a failed cancellation's idempotency key for discarded financial edits", async () => {
+    const onCancel = vi.fn().mockRejectedValueOnce(new Error("network")).mockResolvedValue(undefined);
+    renderDialog({ onCancel });
+    await openCancellation(); fillCancellation(); setManualSplit("500", "300", "200");
+    confirmCancellation();
+    await screen.findByText("network");
+    openFinancialEditor();
+    fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: "600" } });
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+    confirmCancellation();
+    await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(2));
+    expect(onCancel.mock.calls[0][1]).toEqual(onCancel.mock.calls[1][1]);
+  });
+
   it.each(["back", "Escape", "close", "backdrop"])("dismisses final confirmation using %s without submitting or losing the allocation", async method => {
     const onCancel = vi.fn().mockResolvedValue(undefined);
     renderDialog({ presentation: "page", onCancel });
     await openCancellation();
     fillCancellation(); setManualSplit("500", "300", "200");
     fireEvent.change(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)"), { target: { value: "تصمیم مدیر" } });
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
     const review = screen.getByRole("button", { name: "تأیید و لغو رزرو" });
     fireEvent.click(review);
     fireEvent.click(review);
@@ -243,8 +362,7 @@ describe("Admin reservation cancellation financial UI", () => {
     else fireEvent.click(within(confirmation).getByRole("button", { name: method === "back" ? "بازگشت به فرم" : "بستن" }));
     expect(screen.getByLabelText(/دلیل لغو/)).toHaveProperty("value", "GuestRequest");
     expect(screen.getByLabelText(/توضیحات لغو/)).toHaveProperty("value", "درخواست مهمان");
-    expect(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/)).toHaveProperty("value", "500");
-    expect(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)")).toHaveProperty("value", "تصمیم مدیر");
+    expect(screen.getByTestId("cancellation-refund-amount").textContent).toBe("۵۰۰ واحد");
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "تأیید و لغو رزرو" })));
     expect(onCancel).not.toHaveBeenCalled();
     confirmCancellation();
@@ -260,6 +378,7 @@ describe("Admin reservation cancellation financial UI", () => {
     const onCancel = vi.fn().mockResolvedValue(undefined);
     renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding: walletFunding } }) });
     await openCancellation(); fillCancellation();
+    openFinancialEditor();
     const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
     groups.forEach((group, index) => {
       const cash = within(group).queryByLabelText(/بازپرداخت نقدی/);
@@ -356,7 +475,7 @@ describe("Admin reservation cancellation financial UI", () => {
     expect(within(screen.getByRole("region", { name: "خلاصه رزرو" })).getByText(/۹۰۰۰/)).toBeTruthy();
     expect(within(screen.getByRole("region", { name: "خلاصه رزرو" })).getByText("۱۰۰۰ واحد")).toBeTruthy();
     expect(screen.queryByText(/بازپرداخت نقدی در انتظار ثبت: ۲۰۰/)).toBeNull();
-    expect(screen.getByText(/ثبت لغو به معنی انجام بازپرداخت نقدی نیست/)).toBeTruthy();
+    expect(screen.getByText(/این مبلغ به معنی انجام بازپرداخت نیست/)).toBeTruthy();
   });
 
   it.each([null, undefined, { ...financial, paidCancellation: false }])(
@@ -383,7 +502,8 @@ describe("Admin reservation cancellation financial UI", () => {
     expect(within(screen.getByRole("region", { name: "خلاصه رزرو" })).getByText("۱۰۰۰ واحد")).toBeTruthy();
     expect(within(section).queryByText(/۸۰۰۰|۹۰۰۰/)).toBeNull();
     setManualSplit("500", "300", "200");
-    fireEvent.click(screen.getByRole("checkbox", { name: "می‌خواهم مبالغ را دستی تعیین کنم" }));
+    fireEvent.click(screen.getByRole("button", { name: "بازگردانی پیش‌فرض سرور" }));
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
     fillCancellation();
     confirmCancellation();
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
@@ -396,12 +516,12 @@ describe("Admin reservation cancellation financial UI", () => {
     await openCancellation();
     fillCancellation();
     setManualSplit("-1", "", "0");
-    fireEvent.click(screen.getByRole("button", { name: "تأیید و لغو رزرو" }));
-    expect(screen.getByRole("button", { name: "تأیید و لغو رزرو" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "اعمال مبالغ" }));
+    expect(screen.getByRole("dialog", { name: "ویرایش مبالغ لغو رزرو" })).toBeTruthy();
     expect(onCancel).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: "500.25" } });
     fireEvent.change(screen.getByLabelText(/سهم نهایی اقامتگاه/), { target: { value: "300" } });
-    expect(screen.getByText("جمع مبالغ باید دقیقاً برابر مبلغ پرداخت‌شده باشد.")).toBeTruthy();
+    expect(screen.getByText("همهٔ مبالغ را تکمیل کنید؛ جمع تخصیص باید دقیقاً برابر مبلغ پرداخت‌شده باشد.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "199.75" } });
     fireEvent.change(screen.getByLabelText("یادداشت تصمیم مالی (اختیاری)"), { target: { value: "تصمیم مدیر" } });
     confirmCancellation();
@@ -438,6 +558,7 @@ describe("Admin reservation cancellation financial UI", () => {
     setManualSplit("500", "300", "200");
     confirmCancellation();
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
+    openFinancialEditor();
     fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: "600" } });
     fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "100" } });
     confirmCancellation();
@@ -693,7 +814,7 @@ describe("Admin guest cancellation request in reservation details", () => {
     expect(screen.getByLabelText(/دلیل لغو/)).toHaveProperty("value", "");
     expect(screen.getByLabelText(/توضیحات لغو/)).toHaveProperty("value", "");
     expect(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).toBeTruthy();
-    expect(screen.getByRole("checkbox", { name: "می‌خواهم مبالغ را دستی تعیین کنم" })).toHaveProperty("checked", false);
+    expect(screen.getByRole("button", { name: "ویرایش مبالغ" })).toBeTruthy();
   });
 
   it.each(["Rejected", "Resolved"] as const)("keeps %s request details read-only", async (status) => {
