@@ -74,6 +74,7 @@ it("wires the real dedicated details page from Pending capability through prepar
   expect((within(paymentForm).getByLabelText(/^مبلغ/) as HTMLInputElement).value).toBe("200");
   fireEvent.click(within(paymentForm).getByRole("button", { name: "ثبت پرداخت" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "ثبت پرداخت دستی" })).toBeNull());
+  fireEvent.click(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }));
   fireEvent.click(await screen.findByRole("button", { name: "تأیید پرداخت" }));
   const approve = await screen.findByRole("alertdialog", { name: "تأیید پرداخت دستی" });
   fireEvent.click(within(approve).getByRole("button", { name: "تأیید پرداخت" }));

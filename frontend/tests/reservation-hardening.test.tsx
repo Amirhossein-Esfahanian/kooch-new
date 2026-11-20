@@ -60,6 +60,7 @@ describe("reservation hardening", () => {
       canPrepareManualPayment: false, status: "ApprovedAwaitingPayment", paymentExpiresAtUtc: "2026-11-20T12:45:00Z" }}
       onOpenChange={vi.fn()} onPrepareManualPayment={prepare} onStatusChange={status} />);
     expect(screen.queryByRole("button", { name: "آماده‌سازی برای پرداخت" })).toBeNull();
+    fireEvent.click(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }));
     expect(screen.getAllByText(/مهلت پرداخت/).length).toBeGreaterThan(0);
   });
 
@@ -78,7 +79,7 @@ describe("reservation hardening", () => {
     expect(screen.getByRole("heading", { level: 1, name: /رزرو KCH-TEST/ })).toBeTruthy();
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.getAllByText("در انتظار تایید", { exact: true })).toHaveLength(1);
-    expect(screen.getByRole("heading", { name: "مبالغ این رزرو" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "مبالغ این رزرو" })).toBeNull();
     const approve = screen.getByRole("button", { name: "آماده پرداخت" });
     expect(approve.className).toContain("bg-primary");
     fireEvent.click(approve);
@@ -99,6 +100,7 @@ describe("reservation hardening", () => {
     const onCancel = vi.fn(), onOpenChange = vi.fn();
     render(<ReservationDetailsDialog presentation={presentation} onCancel={onCancel} onOpenChange={onOpenChange} open
       reservation={reservation({ status: "Confirmed", allowedStatusTransitions: ["Cancelled"] })} />);
+    if (presentation === "page") fireEvent.click(screen.getByText("اقدامات بیشتر", { selector: "summary" }));
     const trigger = await screen.findByRole("button", { name: "لغو رزرو" });
     trigger.focus();
     const scroll = document.documentElement.scrollTop;

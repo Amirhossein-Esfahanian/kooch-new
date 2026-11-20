@@ -204,6 +204,8 @@ function renderDialog(props: Partial<ComponentProps<typeof ReservationDetailsDia
 }
 
 async function openCancellation() {
+  const more = screen.queryByText("اقدامات بیشتر", { selector: "summary" });
+  if (more) fireEvent.click(more);
   fireEvent.click(await screen.findByRole("button", { name: "لغو رزرو" }));
   await screen.findByRole("dialog", { name: "لغو رزرو R-123456" });
 }

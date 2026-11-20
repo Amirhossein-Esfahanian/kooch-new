@@ -68,6 +68,7 @@ describe("dedicated Admin reservation details", () => {
       throw new Error(path);
     });
     render(<DetailsPage />);
+    fireEvent.click(await screen.findByText("اقدامات بیشتر", { selector: "summary" }));
     fireEvent.click(await screen.findByRole("button", { name: "لغو رزرو" }));
     const dialog = await screen.findByRole("dialog", { name: "لغو رزرو R-855759" });
     fireEvent.change(within(dialog).getByLabelText(/دلیل لغو/), { target: { value: "GuestRequest" } });
@@ -76,6 +77,8 @@ describe("dedicated Admin reservation details", () => {
     expect(mocks.request.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
     const confirmation = screen.getByRole("dialog", { name: "تأیید نهایی لغو رزرو" });
     fireEvent.click(within(confirmation).getByRole("button", { name: "لغو قطعی رزرو" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "تأیید نهایی لغو رزرو" })).toBeNull());
+    fireEvent.click(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }));
     expect(await screen.findByText("بازپرداخت نقدی در انتظار انجام")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "لغو رزرو" })).toBeNull();
     expect(screen.queryByText("بازپرداخت نقدی ثبت شده است.")).toBeNull();
