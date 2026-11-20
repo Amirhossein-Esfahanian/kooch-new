@@ -19,16 +19,29 @@
   overflow-wrap: anywhere;
 }
 .property { grid-column: 1 / -1; font-weight: 600; }
+.summaryItem { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; min-width: 0; }
+.summaryItem dt { color: var(--muted-foreground); font-size: .75rem; flex-shrink: 0; }
+.summaryItem dd { min-width: 0; overflow-wrap: anywhere; }
 .reference { display: block; color: var(--muted-foreground); font-size: .8125rem; font-weight: 400; }
 .impact { display: grid; gap: .75rem; }
 .financialHeader { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem; }
 .financialHeader strong { font-size: 1rem; font-variant-numeric: tabular-nums; }
+.unknown { color: var(--muted-foreground); font-size: .8125rem; font-weight: 400; }
+.tableCurrency { margin-block-end: .5rem; color: var(--muted-foreground); font-size: .75rem; }
 .sourcesTable[aria-label] { min-width: 0; table-layout: fixed; font-size: .75rem; }
 .sourcesTable th, .sourcesTable td { padding: .5rem; white-space: normal; overflow-wrap: anywhere; }
+.sourcesTable th { padding: .5rem .375rem; font-size: .6875rem; font-weight: 600; line-height: 1.7; }
+.sourcesTable td { font-variant-numeric: tabular-nums; }
+.editorSection { display: grid; gap: .75rem; }
+.editorSection h3 { font-size: .875rem; font-weight: 600; }
 .mobileLabel { display: none; }
 .finalShares { display: grid; gap: .5rem; margin-block-start: .75rem; padding-block-start: .75rem; border-block-start: 1px solid var(--border); font-size: .8125rem; }
-.finalShares > div, .balance dl > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+.finalShares > div { display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 .balance { display: grid; gap: .5rem; border-block-start: 1px solid var(--border); padding-block-start: .75rem; }
+.balance dl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem; font-size: .75rem; }
+.balance dl > div { display: grid; align-content: start; gap: .25rem; overflow-wrap: anywhere; }
+.balance dt { color: var(--muted-foreground); }
+.balance dd { font-variant-numeric: tabular-nums; }
 .consequences {
   display: grid;
   gap: .5rem;
@@ -44,6 +57,7 @@
   .dialogBody { padding: 1rem; }
 }
 @media (max-width: 639px) {
+  .summaryItem { display: grid; align-content: start; gap: .25rem; }
   .sourcesTable thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .sourcesTable tbody { display: block; }
   .sourcesTable tbody tr { display: grid; padding: .5rem; }
