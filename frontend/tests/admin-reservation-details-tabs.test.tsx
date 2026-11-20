@@ -49,7 +49,7 @@ describe("Admin reservation details tabbed page", () => {
     expect(edit).toHaveBeenCalledExactlyOnceWith(item);
     expect(voucher).toHaveBeenCalledExactlyOnceWith(item);
     tab("پرداخت و بازپرداخت");
-    expect(screen.getByRole("heading", { name: "مبالغ این رزرو" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "خلاصه مالی این رزرو" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ویرایش" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ارجاع کار" })).toBeNull();
     tab("فعالیت‌ها و یادداشت‌ها");
@@ -147,11 +147,12 @@ describe("Admin reservation details tabbed page", () => {
     expect(within(header).getByText("دلیل لغو")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ثبت پرداخت دستی" })).toBeNull();
     tab("پرداخت و بازپرداخت");
-    expect(screen.getByText("مبالغ این بخش سابقهٔ رزرو هستند و به معنی ماندهٔ قابل وصول نیستند. وضعیت بازپرداخت جداگانه نمایش داده می‌شود.")).toBeTruthy();
+    expect(screen.getByText("این مبالغ سوابق مالی رزرو لغوشده‌اند؛ ماندهٔ تاریخی قابل وصول نیست. تخصیص بازپرداخت به معنی اجرای آن نیست.")).toBeTruthy();
+    fireEvent.click(screen.getByText("ریز محاسبات رزرو و لغو", { selector: "summary" }));
     expect(screen.getByText("مبلغ قابل پرداخت (سابقه)")).toBeTruthy();
     expect(screen.getByText("ماندهٔ ثبت‌شده (سابقه)")).toBeTruthy();
     expect(screen.queryByText("باقی‌مانده", { exact: true })).toBeNull();
-    expect(screen.getByText("بازپرداخت نقدی در انتظار انجام")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "خلاصه مالی این رزرو" })).getByText("بازپرداخت نقدی در انتظار انجام")).toBeTruthy();
     expect(screen.getByRole("button", { name: "ثبت بازپرداخت" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ثبت تسویهٔ کل سفارش" })).toBeNull();
     expect(screen.queryByText("اقدامات بیشتر")).toBeNull();

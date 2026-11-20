@@ -12,6 +12,7 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { ManualOrderSettlement } from "./ManualOrderSettlement";
+import { cancellationCashStatus, ReservationFinancialSummary, ReservationFinancialDetails, ReservationPricingBreakdown, ReservationPaymentRow } from "./ReservationFinancialTab";
 import { ReservationDetailsSurface, ReservationDetailsTabs, type ReservationDetailsTab } from "./ReservationDetailsSurface";
 import {
   KoochCheckbox,
@@ -1948,6 +1949,31 @@ export function ReservationDetailsDialog({
   const primaryAction = primaryKind === "prepare" ? prepareAction : primaryKind === "manual" ? manualPaymentAction :
     primaryKind === "status" && primaryStatus ? transitionAction(primaryStatus) : primaryKind === "link" ? linkAction : null;
 
+  const priceAdjustmentAction = canAdjustPrice && !priceAdjustmentOpen ? (
+                  <KoochButton
+                    onClick={() => setPriceAdjustmentOpen(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    اصلاح قیمت
+                  </KoochButton>
+                ) : null;
+  const priceAdjustmentEditor = priceAdjustmentOpen && canAdjustPrice && reservation ? (
+                  <ReservationPriceAdjustmentAlert
+                    calculatedPrice={calculatedPrice}
+                    currencyLabel={currencyLabel}
+                    currentAdjustment={manualAdjustment}
+                    key={`${reservation.reservationId ?? reservation.id}-${manualAdjustment}`}
+                    onClose={() => setPriceAdjustmentOpen(false)}
+                    onConfirm={async (amount) => {
+                      if (onAdjustPrice)
+                        await onAdjustPrice(reservation, amount);
+                    }}
+                  />
+                ) : null;
+  const actionableDeadline = shouldShowPaymentCountdown && Boolean(reservation?.paymentExpiresAtUtc) &&
+    !reservation?.isPaymentExpired && remainingPaymentSeconds !== 0 && (canRegisterPayment || canSendPaymentLink);
+
   const sections = reservation ? {
     request: <>            {reservation.cancellationRequest && (
               <KoochCard className="grid gap-3" padding="sm" variant="muted" aria-label="درخواست لغو مهمان">
@@ -2041,7 +2067,7 @@ export function ReservationDetailsDialog({
                     <DetailItem label="سهم نهایی کوچ"
                       value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalKoochShare, { currencyLabel: cancellationCurrencyLabel }))} />
                   )}
-                  <DetailItem label="وضعیت بازپرداخت" value={
+                  <DetailItem label="وضعیت بازپرداخت" value={presentation === "page" ? cancellationCashStatus(reservation.cancellationFinancial) :
                     reservation.cancellationFinancial.refundPending === true
                       ? "بازپرداخت نقدی در انتظار انجام"
                       : reservation.cancellationFinancial.alreadyHandledByLegacyRefundV1
@@ -2151,32 +2177,8 @@ export function ReservationDetailsDialog({
 
 </>,
     financial: <>            <DetailSection
-              action={
-                canAdjustPrice && !priceAdjustmentOpen ? (
-                  <KoochButton
-                    onClick={() => setPriceAdjustmentOpen(true)}
-                    size="sm"
-                    variant="outline"
-                  >
-                    اصلاح قیمت
-                  </KoochButton>
-                ) : null
-              }
-              footer={
-                priceAdjustmentOpen && canAdjustPrice && reservation ? (
-                  <ReservationPriceAdjustmentAlert
-                    calculatedPrice={calculatedPrice}
-                    currencyLabel={currencyLabel}
-                    currentAdjustment={manualAdjustment}
-                    key={`${reservation.reservationId ?? reservation.id}-${manualAdjustment}`}
-                    onClose={() => setPriceAdjustmentOpen(false)}
-                    onConfirm={async (amount) => {
-                      if (onAdjustPrice)
-                        await onAdjustPrice(reservation, amount);
-                    }}
-                  />
-                ) : null
-              }
+              action={priceAdjustmentAction}
+              footer={priceAdjustmentEditor}
               title={presentation === "page" ? "مبالغ این رزرو" : "مالی"}
             >
               <DetailItem
@@ -2240,7 +2242,8 @@ export function ReservationDetailsDialog({
               <DetailItem label="واحد پول" value={currencyLabel} />
             </DetailSection>
 
-            {(onCreateManualPayment || manualPayments.length > 0 || manualPaymentsLoading) && (
+</>,
+    payments: <>            {(onCreateManualPayment || manualPayments.length > 0 || manualPaymentsLoading) && (
               <KoochCard className="grid gap-3" padding="sm" variant="elevated">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-foreground">پرداخت‌های دستی</h3>
@@ -2256,6 +2259,45 @@ export function ReservationDetailsDialog({
                       const isPending = payment.verificationStatus === "PendingVerification";
                       const actor = payment.submittedBy ??
                         (payment.submittedByUserId ? `کاربر ${toPersianDigits(payment.submittedByUserId)}` : "-");
+                      const paymentActions = isPending && (onApproveManualPayment || onRejectManualPayment) && (
+                            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                              {onApproveManualPayment && (
+                                <KoochButton
+                                  disabled={manualPaymentMutationId !== null}
+                                  onClick={() => setApprovePaymentId(payment.paymentId)}
+                                  size="sm"
+                                >
+                                  تأیید پرداخت
+                                </KoochButton>
+                              )}
+                              {onRejectManualPayment && (
+                                <KoochButton
+                                  disabled={manualPaymentMutationId !== null}
+                                  onClick={() => setRejectPaymentId(payment.paymentId)}
+                                  size="sm"
+                                  variant="destructive"
+                                >
+                                  رد پرداخت
+                                </KoochButton>
+                              )}
+                            </div>
+                          );
+                      if (presentation === "page") return <ReservationPaymentRow key={payment.paymentId}
+                        payment={payment} methodLabel={manualPaymentMethodLabels[payment.method]}
+                        statusLabel={manualPaymentStatusLabels[payment.status]}
+                        verificationLabel={manualPaymentVerificationLabels[payment.verificationStatus]}
+                        dateLabel={`${formatDate(payment.paymentDate)}${payment.paymentTime ? ` - ${toPersianDigits(payment.paymentTime.slice(0, 5))}` : ""}`}
+                        metadata={[
+                          ["بانک مقصد", payment.destinationBank], ["شناسه حساب مقصد", payment.destinationAccountReference],
+                          ["یادداشت", payment.notes],
+                          ["ثبت‌کننده", actor !== "-" ? actor : null],
+                          ["زمان ثبت", payment.submittedAtUtc ? formatDateTime(payment.submittedAtUtc) : null],
+                          ["تأییدکننده", payment.verifiedBy],
+                          ["زمان تأیید", payment.verifiedAtUtc ? formatDateTime(payment.verifiedAtUtc) : null],
+                          ["ردکننده", payment.rejectedBy],
+                          ["زمان رد", payment.rejectedAtUtc ? formatDateTime(payment.rejectedAtUtc) : null],
+                          ["دلیل رد", payment.rejectionReason],
+                        ]} actions={paymentActions} />;
                       return (
                         <article className="grid gap-3 rounded-lg border border-border bg-background p-3" key={payment.paymentId}>
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -2296,29 +2338,7 @@ export function ReservationDetailsDialog({
                               <DetailItem label="دلیل رد" value={payment.rejectionReason} />
                             )}
                           </dl>
-                          {isPending && (onApproveManualPayment || onRejectManualPayment) && (
-                            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                              {onApproveManualPayment && (
-                                <KoochButton
-                                  disabled={manualPaymentMutationId !== null}
-                                  onClick={() => setApprovePaymentId(payment.paymentId)}
-                                  size="sm"
-                                >
-                                  تأیید پرداخت
-                                </KoochButton>
-                              )}
-                              {onRejectManualPayment && (
-                                <KoochButton
-                                  disabled={manualPaymentMutationId !== null}
-                                  onClick={() => setRejectPaymentId(payment.paymentId)}
-                                  size="sm"
-                                  variant="destructive"
-                                >
-                                  رد پرداخت
-                                </KoochButton>
-                              )}
-                            </div>
-                          )}
+                          {paymentActions}
                         </article>
                       );
                     })}
@@ -2492,21 +2512,27 @@ export function ReservationDetailsDialog({
               </section>
               <section className={detailsStyles.panel} role="tabpanel" id={`${tabsId}-financial-panel`}
                 aria-labelledby={`${tabsId}-financial-tab`} hidden={activeTab !== "financial"} tabIndex={0}>
-                {reservation.status === "Cancelled" && <KoochAlert title="سوابق مالی رزرو لغوشده">
-                  مبالغ این بخش سابقهٔ رزرو هستند و به معنی ماندهٔ قابل وصول نیستند. وضعیت بازپرداخت جداگانه نمایش داده می‌شود.
-                </KoochAlert>}
+                <ReservationFinancialSummary reservation={reservation} currencyLabel={currencyLabel}
+                  collectible={(canRegisterPayment || canSendPaymentLink) && remainingPaymentSeconds !== 0} refundAction={refundAction} />
+                {actionableDeadline && sections?.deadline}
                 <div className={detailsStyles.sectionActions}>
-                  {orderAction}{primaryKind !== "link" && linkAction}{refundAction}
+                  {orderAction}{primaryKind !== "link" && linkAction}
                   {statusActions.filter(status => status !== "Cancelled" && !(primaryKind === "status" && status === primaryStatus)).map(transitionAction)}
                 </div>
-                {sections?.refund}{sections?.financial}{sections?.deadline}
+                {sections?.payments}
+                <ReservationFinancialDetails>
+                  <ReservationPricingBreakdown reservation={reservation} currencyLabel={currencyLabel}
+                    action={priceAdjustmentAction} editor={priceAdjustmentEditor} />
+                  {sections?.refund}
+                  {!actionableDeadline && reservation.paymentExpiresAtUtc && sections?.deadline}
+                </ReservationFinancialDetails>
               </section>
               <section className={detailsStyles.panel} role="tabpanel" id={`${tabsId}-activity-panel`}
                 aria-labelledby={`${tabsId}-activity-tab`} hidden={activeTab !== "activity"} tabIndex={0}>
                 <div className={detailsStyles.sectionActions}>{taskAction}</div>
                 {sections?.notes}{sections?.activity}
               </section>
-            </> : <>{sections?.request}{sections?.refund}{sections?.info}{sections?.financial}{sections?.activity}{sections?.deadline}{sections?.notes}</>}
+            </> : <>{sections?.request}{sections?.refund}{sections?.info}{sections?.financial}{sections?.payments}{sections?.activity}{sections?.deadline}{sections?.notes}</>}
           </div>
         ) : (
           <p className="text-sm font-semibold text-muted-foreground">

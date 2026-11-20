@@ -79,7 +79,7 @@ describe("dedicated Admin reservation details", () => {
     fireEvent.click(within(confirmation).getByRole("button", { name: "لغو قطعی رزرو" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "تأیید نهایی لغو رزرو" })).toBeNull());
     fireEvent.click(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }));
-    expect(await screen.findByText("بازپرداخت نقدی در انتظار انجام")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "خلاصه مالی این رزرو" })).getByText("بازپرداخت نقدی در انتظار انجام")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "لغو رزرو" })).toBeNull();
     expect(screen.queryByText("بازپرداخت نقدی ثبت شده است.")).toBeNull();
     expect(screen.getByRole("button", { name: "ثبت بازپرداخت" })).toBeTruthy();
