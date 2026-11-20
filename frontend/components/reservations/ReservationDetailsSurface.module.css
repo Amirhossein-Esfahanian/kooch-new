@@ -17,10 +17,31 @@
 .moreActionsPanel { position: absolute; inset-inline-end: 0; top: calc(100% + .5rem); z-index: 20; width: max-content; max-width: min(20rem, calc(100vw - 3rem)); display: grid; gap: .75rem; padding: .75rem; border: 1px solid var(--border); border-radius: .5rem; background: var(--popover); color: var(--popover-foreground); box-shadow: 0 .5rem 1.5rem color-mix(in srgb, var(--foreground) 12%, transparent); }
 .moreActionsPanel > button { white-space: normal; }
 .moreActionsPanel > button + button { border-block-start-width: 1px; margin-block-start: .25rem; }
-.tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-block-end: 1px solid var(--border); }
-.tabs button { min-height: 2.75rem; padding: .75rem .5rem; border-block-end: 3px solid transparent; font-size: .875rem; color: var(--muted-foreground); }
+.tabs { display: flex; justify-content: flex-start; gap: .25rem; min-width: 0; max-width: 100%; overflow-x: auto; border-block-end: 1px solid var(--border); scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.tabs button { position: relative; flex: 0 0 auto; min-height: 2.75rem; padding: .75rem 1rem; white-space: nowrap; font-size: .875rem; font-weight: 600; color: var(--muted-foreground); }
+.tabs button::after { content: ""; position: absolute; inset-block-end: 0; inset-inline-start: 50%; width: 2rem; height: 3px; transform: translateX(50%); border-radius: 3px; background: transparent; }
 .tabs button:hover { color: var(--foreground); background: var(--muted); }
-.tabs button[aria-selected="true"] { color: var(--primary); border-block-end-color: var(--primary); font-weight: 600; }
+.tabs button[aria-selected="true"] { color: var(--primary); font-weight: 700; }
+.tabs button[aria-selected="true"]::after { background: var(--primary); }
+.tabs button:focus-visible { outline-offset: -3px; }
+.journey { display: grid; margin: 0; padding: 0; list-style: none; }
+.journeyItem { position: relative; display: grid; align-content: start; gap: .375rem; min-width: 0; padding-inline-start: 1.5rem; padding-block-end: 1.25rem; overflow-wrap: anywhere; }
+.journeyItem:last-child { padding-block-end: 0; }
+.journeyMarker { position: absolute; z-index: 1; inset-inline-start: .125rem; inset-block-start: .375rem; width: .625rem; height: .625rem; border: 2px solid var(--card); border-radius: 50%; background: var(--primary); }
+.journeyConnector { position: absolute; inset-inline-start: .4375rem; inset-block-start: .6875rem; width: 1px; height: 100%; background: var(--border); }
+.eventHeading { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .625rem; }
+.eventHeading time { font-variant-numeric: tabular-nums; }
+.activityList { display: grid; margin: 0; padding: 0; list-style: none; }
+.activityItem { display: grid; gap: .375rem; min-width: 0; padding-block: .875rem; overflow-wrap: anywhere; }
+.activityItem + .activityItem { border-block-start: 1px solid var(--border); }
+.activityItem:first-child { padding-block-start: 0; }
+.activityItem:last-child { padding-block-end: 0; }
+@media (min-width: 768px) {
+  .journey { grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+  .journeyItem, .journeyItem:last-child { padding-block: 1.5rem 0; padding-inline: .5rem; }
+  .journeyMarker { inset-inline-start: calc(50% - .3125rem); inset-block-start: 0; }
+  .journeyConnector { inset-inline-start: 50%; inset-block-start: .3125rem; width: 100%; height: 1px; }
+}
 .panel { display: grid; min-width: 0; gap: 1rem; }
 .panel[hidden] { display: none; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; padding-block: .25rem; }

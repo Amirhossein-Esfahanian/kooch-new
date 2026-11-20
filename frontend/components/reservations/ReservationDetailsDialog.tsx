@@ -487,8 +487,11 @@ function DetailSection({
   );
 }
 
-function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
+function TimelineSection({ events, journey = false }: { events: ReservationTimelineEvent[]; journey?: boolean }) {
   const currencyLabel = useSiteCurrencyLabel();
+  const displayedEvents = journey
+    ? [...events].sort((a, b) => Date.parse(a.timestampUtc) - Date.parse(b.timestampUtc))
+    : events;
 
   return (
     <KoochCard className="grid gap-3" padding="sm" variant="elevated">
@@ -498,8 +501,8 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
           رویدادی برای این رزرو ثبت نشده است.
         </p>
       ) : (
-        <ol className="grid gap-0">
-          {events.map((event, index) => {
+        <ol className={journey ? detailsStyles.journey : "grid gap-0"} aria-label={journey ? "مسیر رزرو" : undefined} dir={journey ? "rtl" : undefined}>
+          {displayedEvents.map((event, index) => {
             const reason = event.cancellationReason
               ? cancellationReasonLabels[event.cancellationReason]
               : null;
@@ -509,15 +512,16 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
 
             return (
               <li
-                className="relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1"
+                className={journey ? detailsStyles.journeyItem : "relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1"}
                 key={`${event.type}-${event.timestampUtc}-${index}`}
               >
-                <span className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary" />
-                <div className="flex flex-wrap items-center justify-between gap-2">
+                <span aria-hidden="true" className={journey ? detailsStyles.journeyMarker : "absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary"} />
+                {journey && index < displayedEvents.length - 1 && <span aria-hidden="true" className={detailsStyles.journeyConnector} data-journey-connector />}
+                <div className={journey ? detailsStyles.eventHeading : "flex flex-wrap items-center justify-between gap-2"}>
                   <span className="text-sm font-bold text-foreground">
                     {timelineLabels[event.type]}
                   </span>
-                  <time className="text-xs font-semibold text-muted-foreground">
+                  <time dateTime={event.timestampUtc} className="text-xs font-semibold text-muted-foreground">
                     {formatDateTime(event.timestampUtc)}
                   </time>
                 </div>
@@ -550,7 +554,7 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
                   </span>
                 ) : null}
                 {event.note && (
-                  <p className="text-xs leading-6 text-muted-foreground">
+                  <p className="whitespace-pre-wrap break-words text-xs leading-6 text-muted-foreground">
                     {event.note}
                   </p>
                 )}
@@ -586,7 +590,7 @@ interface OwnerActivityPage {
   totalPages: number;
 }
 
-function ActivityEntries({ activities, deduplicate = false }: { activities: ActivityDisplay[]; deduplicate?: boolean }) {
+function ActivityEntries({ activities, deduplicate = false, compact = false }: { activities: ActivityDisplay[]; deduplicate?: boolean; compact?: boolean }) {
   const entries: ActivityDisplay[] = [];
   for (const activity of activities) {
     const existing = deduplicate && activity.id !== undefined ? entries.find(item => item.id === activity.id) : undefined;
@@ -595,12 +599,12 @@ function ActivityEntries({ activities, deduplicate = false }: { activities: Acti
     } else entries.push({ ...activity });
   }
   return (
-    <ol className="grid gap-0">
+    <ol className={compact ? detailsStyles.activityList : "grid gap-0"} aria-label="سابقه فعالیت‌ها">
       {entries.map((activity, index) => (
-        <li className="relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1" key={activity.id ?? index}>
-          <span aria-hidden="true" className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary/70" />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <strong className="text-sm text-foreground">{activity.title}</strong>
+        <li className={compact ? detailsStyles.activityItem : "relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1"} key={activity.id ?? index}>
+          {!compact && <span aria-hidden="true" className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary/70" />}
+          <div className={compact ? detailsStyles.eventHeading : "flex flex-wrap items-center justify-between gap-2"}>
+            <strong className="text-sm text-foreground">{compact && activity.activityType === "PaymentPrepared" ? "آماده‌سازی برای پرداخت" : activity.title}</strong>
             <time className="text-xs text-muted-foreground" dateTime={activity.occurredAtUtc}>{formatDateTime(activity.occurredAtUtc)}</time>
           </div>
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -614,7 +618,7 @@ function ActivityEntries({ activities, deduplicate = false }: { activities: Acti
   );
 }
 
-function AdminActivitySection({ reservationId, canAddNote, deduplicate = false }: { reservationId: number; canAddNote: boolean; deduplicate?: boolean }) {
+function AdminActivitySection({ reservationId, canAddNote, deduplicate = false, compact = false }: { reservationId: number; canAddNote: boolean; deduplicate?: boolean; compact?: boolean }) {
   const [activities, setActivities] = useState<ReservationActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -676,7 +680,7 @@ function AdminActivitySection({ reservationId, canAddNote, deduplicate = false }
           <KoochButton onClick={() => setReload((value) => value + 1)} size="sm" variant="outline">تلاش دوباره</KoochButton>
         </div> : activities.length === 0 ?
           <p className="text-sm text-muted-foreground">هنوز فعالیتی ثبت نشده است.</p> :
-          <ActivityEntries activities={activities} deduplicate={deduplicate} />}
+          <ActivityEntries activities={activities} deduplicate={deduplicate} compact={compact} />}
       {canAddNote && (
         <form className="grid gap-2 border-t border-border pt-3" onSubmit={submitNote}>
           <KoochField error={noteError || undefined} helperText="این یادداشت فقط برای مدیران است و به اقامتگاه یا مهمان نمایش داده نمی‌شود." label="یادداشت داخلی">
@@ -2348,10 +2352,11 @@ export function ReservationDetailsDialog({
             )}
 
 </>,
-    activity: <>            <TimelineSection events={timelineEvents} />
+    activity: <>            <TimelineSection events={timelineEvents} journey={presentation === "page"} />
             {showAdminActivities && typeof (reservation.reservationId ?? reservation.id) === "number" && (
               <AdminActivitySection
                 deduplicate={presentation === "page"}
+                compact={presentation === "page"}
                 canAddNote={canAddInternalNote}
                 key={reservation.reservationId ?? reservation.id}
                 reservationId={(reservation.reservationId ?? reservation.id)!}

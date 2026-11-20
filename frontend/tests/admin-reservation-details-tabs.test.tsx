@@ -80,6 +80,57 @@ describe("Admin reservation details tabbed page", () => {
     expect(tabs.filter(button => button.tabIndex === 0)).toHaveLength(1);
   });
 
+  it("orders journey milestones chronologically without mutating data and connects adjacent events only", () => {
+    const timeline: NonNullable<ReservationTableItem["timeline"]> = [
+      { type: "Paid", timestampUtc: "2030-01-03T10:00:00Z", actor: "پرداخت‌کننده" },
+      { type: "Created", timestampUtc: "2030-01-01T10:00:00Z", note: "جزئیات ایجاد" },
+      { type: "Approved", timestampUtc: "2030-01-02T10:00:00Z" },
+    ];
+    show({ reservation: { ...item, timeline } });
+    tab("فعالیت‌ها و یادداشت‌ها");
+    const journey = screen.getByRole("list", { name: "مسیر رزرو" });
+    const milestones = within(journey).getAllByRole("listitem");
+    expect(milestones.map(row => row.querySelector("time")?.dateTime)).toEqual([
+      "2030-01-01T10:00:00Z", "2030-01-02T10:00:00Z", "2030-01-03T10:00:00Z",
+    ]);
+    expect(journey.getAttribute("dir")).toBe("rtl");
+    expect(journey.querySelectorAll("[data-journey-connector]")).toHaveLength(2);
+    expect(milestones[2].querySelector("[data-journey-connector]")).toBeNull();
+    expect(within(journey).getByText("جزئیات ایجاد")).toBeTruthy();
+    expect(within(journey).getByText(/پرداخت‌کننده/)).toBeTruthy();
+    expect(timeline[0].type).toBe("Paid");
+  });
+
+  it("does not draw a connector for a single milestone", () => {
+    show({ reservation: { ...item, timeline: [{ type: "Created", timestampUtc: item.createdAtUtc! }] } });
+    tab("فعالیت‌ها و یادداشت‌ها");
+    const journey = screen.getByRole("list", { name: "مسیر رزرو" });
+    expect(within(journey).getAllByRole("listitem")).toHaveLength(1);
+    expect(journey.querySelector("[data-journey-connector]")).toBeNull();
+  });
+
+  it("identifies preparation only by activity type, not a matching timestamp or current reservation status", async () => {
+    request.mockResolvedValue([
+      { id: 20, actorUserId: 1, actorDisplayName: "مدیر", activityType: "PaymentPrepared", title: "رزرو دستی برای پرداخت آماده شد", details: "جزئیات آماده‌سازی", occurredAtUtc: "2030-01-02T10:00:00Z" },
+      { id: 21, actorUserId: 1, actorDisplayName: "مدیر", activityType: "Approved", title: "تأیید واقعی درخواست", details: "جزئیات تأیید", occurredAtUtc: "2030-01-02T10:00:00Z" },
+      { id: 22, actorUserId: null, actorDisplayName: "System", activityType: "Confirmed", title: "رزرو تأیید نهایی شد", details: null, occurredAtUtc: "2030-01-03T10:00:00Z" },
+    ]);
+    show({ showAdminActivities: true, reservation: { ...item, status: "ApprovedAwaitingPayment", timeline: [
+      { type: "Approved", timestampUtc: "2030-01-02T10:00:00Z" },
+    ] } });
+    tab("فعالیت‌ها و یادداشت‌ها");
+    const history = await screen.findByRole("list", { name: "سابقه فعالیت‌ها" });
+    expect(within(history).getAllByText("آماده‌سازی برای پرداخت")).toHaveLength(1);
+    expect(within(history).getByText("تأیید واقعی درخواست")).toBeTruthy();
+    expect(within(history).getByText("رزرو تأیید نهایی شد")).toBeTruthy();
+    expect(within(history).getByText("جزئیات آماده‌سازی")).toBeTruthy();
+    expect(within(history).getByText("سیستم")).toBeTruthy();
+    expect(history.querySelector('[aria-hidden="true"]')).toBeNull();
+    const journey = screen.getByRole("list", { name: "مسیر رزرو" });
+    expect(within(journey).getByText("تایید درخواست")).toBeTruthy();
+    expect(within(journey).queryByText("آماده‌سازی برای پرداخت")).toBeNull();
+  });
+
   it.each([true, false, undefined])("uses server preparation capability %s, without a global status transition", capability => {
     show({ onPrepareManualPayment: vi.fn(), reservation: { ...item, canPrepareManualPayment: capability } });
     const actions = screen.queryAllByRole("button", { name: "آماده‌سازی برای پرداخت" });
