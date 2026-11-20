@@ -879,6 +879,9 @@ function ReservationCancellationDialog({
 }) {
   const currency = financial?.currency || reservation.currency;
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const reviewRef = useRef<HTMLButtonElement>(null);
+  const [confirmationReady, setConfirmationReady] = useState(false);
+  const previousConfirmation = useRef(false);
   const [serverError, setServerError] = useState("");
   const [reason, setReason] = useState<ReservationCancellationReason | "">("");
   const [explanation, setExplanation] = useState("");
@@ -921,6 +924,9 @@ function ReservationCancellationDialog({
   const splitCents = guestCents !== null && propertyCents !== null && koochCents !== null
     ? guestCents + propertyCents + koochCents : null;
   const fundingTotal = cashTotal + walletTotal + (propertyCents ?? 0) + (koochCents ?? 0) + (forfeitedCents ?? 0);
+  const fundingAmountsKnown = sourceRows.length > 0 && sourceRows.every(row =>
+    row.cash !== null && row.wallet !== null && row.retained !== null) &&
+    propertyCents !== null && koochCents !== null && forfeitedCents !== null;
   const validSplit = fundingManual
     ? grossCents !== null && sourceRows.length > 0 && sourceRows.every((r) => r.valid) &&
       propertyCents !== null && koochCents !== null && forfeitedCents !== null && fundingTotal === grossCents
@@ -929,7 +935,16 @@ function ReservationCancellationDialog({
     toPersianDigits(formatCurrency(amount, { currencyLabel: code === "IRR" ? "ریال" : code || "واحد نامشخص" }));
   const invalidateOperation = () => { operationKeyRef.current = null; setServerError(""); };
 
-  async function confirmCancellation() {
+  useEffect(() => {
+    if (previousConfirmation.current === confirmationReady) return;
+    previousConfirmation.current = confirmationReady;
+    const frame = window.requestAnimationFrame(() => {
+      (confirmationReady ? cancelRef : reviewRef).current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [confirmationReady]);
+
+  function validateCancellation() {
     const trimmedExplanation = explanation.trim();
     const nextReasonError = reason ? "" : "دلیل لغو را انتخاب کنید.";
     const nextExplanationError = trimmedExplanation
@@ -940,9 +955,16 @@ function ReservationCancellationDialog({
     setExplanationError(nextExplanationError);
     setValidationAttempted(true);
     if (nextReasonError || nextExplanationError || !reason || paid && (manual || fundingManual) && !validSplit ||
-        paid && grossCents === null) return;
+        paid && grossCents === null) return false;
+    return true;
+  }
 
-    if (submittingRef.current) return;
+  async function confirmCancellation() {
+    if (!confirmationReady || submittingRef.current) return;
+    if (!validateCancellation() || !reason) {
+      setConfirmationReady(false);
+      return;
+    }
     setServerError("");
     submittingRef.current = true;
     setSubmitting(true);
@@ -973,6 +995,7 @@ function ReservationCancellationDialog({
       operationKeyRef.current = null;
       onClose();
     } catch (error) {
+      setConfirmationReady(false);
       // Retain the decision and idempotency key for an exact retry.
       const body = error instanceof ApiRequestError && error.body && typeof error.body === "object"
         ? error.body as { code?: string; errors?: Record<string, unknown> } : null;
@@ -988,35 +1011,57 @@ function ReservationCancellationDialog({
     }
   }
 
+  const summary = <section className={cancellationStyles.summary} aria-label="خلاصه رزرو">
+    <div className={cancellationStyles.property}>{reservation.propertyName || "-"}</div>
+    {([
+      ["ورود", formatDate(reservation.checkInDate)],
+      ["خروج", formatDate(reservation.checkOutDate)],
+      ["وضعیت", statusLabels[reservation.status] ?? reservation.status],
+      ["مبلغ رزرو", displayMoney(reservation.finalAmount ?? reservation.totalPrice ?? null, reservation.currency)],
+      ...(paid && financial.grossPaidAmount != null && financial.grossPaidAmount > 0
+        ? [["مبلغ پرداخت‌شده", displayMoney(financial.grossPaidAmount)]] : []),
+    ]).map(([label, value]) => <div key={label} className="grid gap-1">
+      <span className="text-xs text-muted-foreground">{label}</span><span>{value}</span>
+    </div>)}
+  </section>;
+
   return (
-    <KoochDialog open title={`لغو رزرو ${reservation.reservationNumber}`}
-      description="دلیل و پیامدهای لغو را بررسی کنید؛ این اقدام نهایی است."
+    <KoochDialog open title={confirmationReady ? "تأیید نهایی لغو رزرو" : <>لغو رزرو <span className={cancellationStyles.reference}>{reservation.reservationNumber}</span></>}
       size="sm" className={cancellationStyles.dialog} bodyClassName={cancellationStyles.dialogBody}
       closeDisabled={submitting} initialFocusRef={cancelRef}
-      onOpenChange={(open) => { if (!open && !submittingRef.current) onClose(); }}
+      onOpenChange={(open) => {
+        if (!open && !submittingRef.current) {
+          if (confirmationReady) setConfirmationReady(false);
+          else onClose();
+        }
+      }}
       footer={<>
-        <KoochButton type="button" variant="destructive" loading={submitting}
+        <KoochButton key={confirmationReady ? "confirm" : "review"} ref={reviewRef} type="button" variant="destructive" loading={submitting}
           disabled={fundingManual && !validSplit || paid && grossCents === null}
-          onClick={() => void confirmCancellation()}>تایید و لغو رزرو</KoochButton>
-        <KoochButton ref={cancelRef} type="button" variant="outline" disabled={submitting} onClick={onClose}>انصراف</KoochButton>
+          onClick={() => {
+            if (confirmationReady) void confirmCancellation();
+            else if (validateCancellation()) setConfirmationReady(true);
+          }}>{confirmationReady ? "لغو قطعی رزرو" : "تأیید و لغو رزرو"}</KoochButton>
+        <KoochButton ref={cancelRef} type="button" variant="outline" disabled={submitting}
+          onClick={() => confirmationReady ? setConfirmationReady(false) : onClose()}>{confirmationReady ? "بازگشت به فرم" : "انصراف"}</KoochButton>
       </>}>
+      {confirmationReady ? <div className={cancellationStyles.body}>
+        {summary}
+        <KoochAlert variant="destructive" title="لغو رزرو قابل بازگشت نیست">
+          با تأیید نهایی، این رزرو لغو می‌شود و امکان بازگرداندن آن وجود ندارد. این اقدام سایر رزروهای سفارش را لغو نمی‌کند.
+        </KoochAlert>
+        <dl className="grid gap-2 text-sm">
+          <div><dt className="text-muted-foreground">دلیل لغو</dt><dd>{reason ? cancellationReasonLabels[reason] : "-"}</dd></div>
+          <div><dt className="text-muted-foreground">توضیحات لغو</dt><dd className="whitespace-pre-wrap break-words">{explanation.trim()}</dd></div>
+          {paid && <div><dt className="text-muted-foreground">تخصیص مالی درخواستی</dt><dd>{manual || fundingManual ? "تخصیص دستی واردشده" : "پیش‌فرض سرور"}</dd></div>}
+        </dl>
+        {paid && <p className="text-sm text-muted-foreground">نتیجهٔ مالی پس از ثبت از پاسخ سرور نمایش داده می‌شود. لغو، به معنی انجام بازپرداخت نقدی نیست.</p>}
+      </div> :
       <fieldset aria-label="اطلاعات لغو رزرو" disabled={submitting} className={cancellationStyles.fields}>
         <div className={cancellationStyles.body}>
           {serverError && <KoochAlert variant="destructive" title="لغو رزرو انجام نشد">{serverError}</KoochAlert>}
           {paid && grossCents === null && <KoochAlert variant="warning" title="اطلاعات مالی کامل نیست">مبلغ پرداخت‌شده در دسترس نیست. دیالوگ را ببندید و جزئیات رزرو را دوباره دریافت کنید.</KoochAlert>}
-          <section className={cancellationStyles.summary} aria-label="خلاصه رزرو">
-            {([
-              ["اقامتگاه", reservation.propertyName || "-"],
-              ["مهمان", reservation.guestFullName || reservation.guestName || "-"],
-              ["ورود", formatDate(reservation.checkInDate)],
-              ["خروج", formatDate(reservation.checkOutDate)],
-              ["وضعیت", statusLabels[reservation.status] ?? reservation.status],
-              ["واحد پول", financial?.currency || "-"],
-            ] as const).map(([label, value]) => (
-              <div key={label} className="flex flex-wrap gap-2"><span className="text-muted-foreground">{label}:</span><span>{value}</span></div>
-            ))}
-            <div className="flex flex-wrap gap-2"><span className="text-muted-foreground">مبلغ ثبت‌شده رزرو (پیش از لغو):</span><span>{displayMoney(reservation.finalAmount ?? reservation.totalPrice ?? null, reservation.currency)}</span></div>
-          </section>
+          {summary}
           <KoochField error={reasonError} label="دلیل لغو" required>
             <KoochSelect
               required
@@ -1040,7 +1085,7 @@ function ReservationCancellationDialog({
             </KoochSelect>
           </KoochField>
 
-          <KoochField helperText="طبق قرارداد فعلی، ثبت توضیح برای لغو الزامی است." error={explanationError} label="توضیحات لغو" required>
+          <KoochField error={explanationError} label="توضیحات لغو" required>
             <KoochTextarea
               required
               error={explanationError}
@@ -1059,7 +1104,6 @@ function ReservationCancellationDialog({
           {paid && (
             <section className={cancellationStyles.impact} aria-label="تسویه مالی لغو رزرو">
               <h3 className="font-semibold text-foreground">تسویه مالی لغو رزرو</h3>
-              <p className="text-sm text-foreground">مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}</p>
               {funding && (
                 <dl className="grid gap-2 text-sm sm:grid-cols-2">
                   {[["پرداخت خارجی", funding.externalAmount], ["کیف پول", funding.walletAmount],
@@ -1076,7 +1120,7 @@ function ReservationCancellationDialog({
                       {source.expiresAtUtc && <span>تاریخ انقضا: {formatDateTime(source.expiresAtUtc)}</span>}
                       {source.expired && <span className="text-destructive">منقضی‌شده</span>}
                       <span className="text-muted-foreground">
-                        گزینه‌ها: {source.maxCashRefundAmount > 0 ? "بازپرداخت نقدی، " : ""}{source.maxWalletRestoreAmount > 0 ? "بازگشت به کیف پول، " : ""}بازگردانده نمی‌شود
+                        گزینه‌ها: {source.maxCashRefundAmount > 0 ? "بازپرداخت نقدی، " : ""}{source.maxWalletRestoreAmount > 0 ? "بازگردانی به منبع اصلی کیف پول، " : ""}بازگردانده نمی‌شود
                       </span>
                     </div>
                   ))}
@@ -1131,7 +1175,7 @@ function ReservationCancellationDialog({
                       <div className="grid gap-3 sm:grid-cols-3">
                         {([
                           ...(source.maxCashRefundAmount > 0 ? [["cash", "بازپرداخت نقدی"] as const] : []),
-                          ...(source.maxWalletRestoreAmount > 0 ? [["wallet", "بازگشت به کیف پول"] as const] : []),
+                          ...(source.maxWalletRestoreAmount > 0 ? [["wallet", "بازگردانی به منبع اصلی کیف پول"] as const] : []),
                           ["retained", "بازگردانده نمی‌شود"] as const,
                         ]).map(([key, label]) => (
                           <KoochField key={key} label={label} required error={values[key] && moneyCents(values[key]) === null ? "مبلغ نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
@@ -1158,12 +1202,14 @@ function ReservationCancellationDialog({
                     ))}
                   </div>
                   <dl className="grid gap-2 border-t border-border pt-3 text-sm" aria-live="polite">
-                    {[
-                      ["مبلغ پرداخت‌شده", grossCents ?? 0], ["بازپرداخت نقدی به مهمان", cashTotal],
-                      ["بازگشت به کیف پول", walletTotal], ["سهم نهایی اقامتگاه", propertyCents ?? 0],
-                      ["سهم نهایی کوچ", koochCents ?? 0], ["اعتبار/مبلغ سوخت‌شده", forfeitedCents ?? 0],
-                      ["اختلاف", (grossCents ?? 0) - fundingTotal],
-                    ].map(([label, amount]) => <div key={String(label)} className="flex justify-between gap-3"><dt>{label}</dt><dd>{displayMoney(Number(amount) / 100)}</dd></div>)}
+                    {([
+                      ["مبلغ پرداخت‌شده", grossCents],
+                      ["بازپرداخت نقدی به مهمان (تخصیص درخواستی)", sourceRows.length > 0 && sourceRows.every(row => row.cash !== null) ? cashTotal : null],
+                      ["بازگردانی به منابع اصلی کیف پول (تخصیص درخواستی)", sourceRows.length > 0 && sourceRows.every(row => row.wallet !== null) ? walletTotal : null],
+                      ["سهم نهایی اقامتگاه", propertyCents], ["سهم نهایی کوچ", koochCents],
+                      ["اعتبار/مبلغ سوخت‌شده", forfeitedCents],
+                      ["اختلاف", grossCents !== null && fundingAmountsKnown ? grossCents - fundingTotal : null],
+                    ] as Array<[string, number | null]>).map(([label, amount]) => <div key={label} className="flex justify-between gap-3"><dt>{label}</dt><dd>{displayMoney(amount === null ? null : amount / 100)}</dd></div>)}
                   </dl>
                   {!validSplit && <p role="status" className="text-sm text-destructive">همه منابع و سهم‌ها را تکمیل کنید؛ اختلاف نهایی باید صفر باشد.</p>}
                 </>
@@ -1181,11 +1227,10 @@ function ReservationCancellationDialog({
             {!paid && <p>در این فرم مبلغی برای استرداد تعیین نمی‌شود؛ وضعیت مالی را سرور بررسی می‌کند.</p>}
             {paid && <>
               <p>مبالغ تخصیص‌یافته برای بازپرداخت، با بازپرداخت انجام‌شده متفاوت‌اند. پرداخت نقدی در فرایند جداگانه ثبت می‌شود.</p>
-              {financial?.cashRefundPendingAmount != null && <p>بازپرداخت نقدی در انتظار ثبت: {displayMoney(financial.cashRefundPendingAmount)}</p>}
             </>}
           </section>
         </div>
-      </fieldset>
+      </fieldset>}
     </KoochDialog>
   );
 }
@@ -1541,6 +1586,8 @@ export function ReservationDetailsDialog({
   const currencyLabel = reservation?.source === "AdminCreated" && reservation.currency
     ? reservation.currency === "IRR" ? "ریال" : reservation.currency
     : siteCurrencyLabel;
+  const cancellationCurrency = reservation?.cancellationFinancial?.currency ?? reservation?.currency;
+  const cancellationCurrencyLabel = cancellationCurrency === "IRR" ? "ریال" : cancellationCurrency || "واحد نامشخص";
   const guestName = reservation?.guestName ?? reservation?.guestFullName ?? "-";
   const guestEmail = reservation?.guestEmail ?? reservation?.email ?? "-";
   const identityNumber =
@@ -1955,38 +2002,40 @@ export function ReservationDetailsDialog({
             {reservation.status === "Cancelled" && reservation.cancellationFinancial?.paidCancellation && (
               <DetailSection title="تسویه مالی لغو رزرو">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <DetailItem label="مبلغ پرداخت‌شده"
-                    value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.grossPaidAmount, { currencyLabel }))} />
+                  {reservation.cancellationFinancial.grossPaidAmount != null && reservation.cancellationFinancial.grossPaidAmount > 0 && <DetailItem label="مبلغ پرداخت‌شده"
+                    value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.grossPaidAmount, { currencyLabel: cancellationCurrencyLabel }))} />}
                   {reservation.cancellationFinancial.mode !== null && (
                     <DetailItem label="حالت مالی" value={reservation.cancellationFinancial.mode !== "AutomaticFullRefundV1"
                       ? "تعیین دستی مبالغ" : "بازپرداخت کامل پیش‌فرض"} />
                   )}
-                  {reservation.cancellationFinancial.guestRefundAmount !== null && (
-                    <DetailItem label="مبلغ بازپرداخت به مهمان"
-                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.guestRefundAmount, { currencyLabel }))} />
+                  {reservation.cancellationFinancial.guestRefundAmount != null && (
+                    <DetailItem label="مبلغ تخصیص‌یافته به بازپرداخت نقدی"
+                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.guestRefundAmount, { currencyLabel: cancellationCurrencyLabel }))} />
                   )}
                   {reservation.cancellationFinancial.mode === "ManualFundingV2" && <>
-                    <DetailItem label="بازگشت به کیف پول" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.guestWalletRestoreAmount, { currencyLabel }))} />
-                    <DetailItem label="اعتبار/مبلغ سوخت‌شده" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.forfeitedAmount, { currencyLabel }))} />
-                    <DetailItem label="بازپرداخت انجام‌شده" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.cashRefundExecutedAmount, { currencyLabel }))} />
-                    <DetailItem label="نیازمند بازپرداخت" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.cashRefundPendingAmount, { currencyLabel }))} />
+                    {reservation.cancellationFinancial.guestWalletRestoreAmount != null && <DetailItem label="بازگردانی به منابع اصلی کیف پول" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.guestWalletRestoreAmount, { currencyLabel: cancellationCurrencyLabel }))} />}
+                    {reservation.cancellationFinancial.forfeitedAmount != null && <DetailItem label="اعتبار/مبلغ سوخت‌شده" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.forfeitedAmount, { currencyLabel: cancellationCurrencyLabel }))} />}
+                    {reservation.cancellationFinancial.cashRefundExecutedAmount != null && reservation.cancellationFinancial.cashRefundExecutedAmount > 0 && <DetailItem label="بازپرداخت نقدی انجام‌شده" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.cashRefundExecutedAmount, { currencyLabel: cancellationCurrencyLabel }))} />}
+                    {reservation.cancellationFinancial.cashRefundPendingAmount != null && reservation.cancellationFinancial.cashRefundPendingAmount > 0 && <DetailItem label="مبلغ بازپرداخت نقدی در انتظار انجام" value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.cashRefundPendingAmount, { currencyLabel: cancellationCurrencyLabel }))} />}
                   </>}
                   {reservation.cancellationFinancial.finalPropertyShare !== null && (
                     <DetailItem label="سهم نهایی اقامتگاه"
-                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalPropertyShare, { currencyLabel }))} />
+                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalPropertyShare, { currencyLabel: cancellationCurrencyLabel }))} />
                   )}
                   {reservation.cancellationFinancial.finalKoochShare !== null && (
                     <DetailItem label="سهم نهایی کوچ"
-                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalKoochShare, { currencyLabel }))} />
+                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalKoochShare, { currencyLabel: cancellationCurrencyLabel }))} />
                   )}
                   <DetailItem label="وضعیت بازپرداخت" value={
-                    reservation.cancellationFinancial.refundPending
-                      ? "بازپرداخت مهمان هنوز ثبت نشده است."
+                    reservation.cancellationFinancial.refundPending === true
+                      ? "بازپرداخت نقدی در انتظار انجام"
                       : reservation.cancellationFinancial.alreadyHandledByLegacyRefundV1
-                        ? "بازپرداخت قبلاً ثبت شده است."
+                        ? "بازپرداخت نقدی قبلاً ثبت شده است."
                         : reservation.cancellationFinancial.guestRefundAmount === 0
-                          ? "بازپرداختی لازم نیست."
-                          : "بازپرداخت ثبت شده است."
+                          ? "بازپرداخت نقدی لازم نیست."
+                          : reservation.cancellationFinancial.refundPending === false && reservation.cancellationFinancial.guestRefundAmount != null
+                            ? "بازپرداخت نقدی ثبت شده است."
+                            : "وضعیت اجرای بازپرداخت در دسترس نیست."
                   } />
                 </div>
                 {reservation.cancellationFinancial.mode === "ManualFundingV2" &&
@@ -1995,10 +2044,10 @@ export function ReservationDetailsDialog({
                       <h3 className="font-medium text-foreground">تصمیم نهایی منابع پرداخت</h3>
                       {reservation.cancellationFinancial.funding.sources.map((source) => (
                         <div key={source.sourceToken} className="grid gap-1 rounded-lg border border-border p-3">
-                          <p className="font-medium">{fundingSourceLabel(source)} — {toPersianDigits(formatCurrency(source.fundedAmount, { currencyLabel }))}</p>
-                          <p>بازپرداخت نقدی: {toPersianDigits(formatCurrency(source.cashRefundAmount, { currencyLabel }))}</p>
-                          <p>بازگشت به کیف پول: {toPersianDigits(formatCurrency(source.walletRestoreAmount, { currencyLabel }))}</p>
-                          <p>بازگردانده نمی‌شود: {toPersianDigits(formatCurrency(source.notReturnedAmount, { currencyLabel }))}</p>
+                          <p className="font-medium">{fundingSourceLabel(source)} — {toPersianDigits(formatCurrency(source.fundedAmount, { currencyLabel: cancellationCurrencyLabel }))}</p>
+                          <p>بازپرداخت نقدی: {toPersianDigits(formatCurrency(source.cashRefundAmount, { currencyLabel: cancellationCurrencyLabel }))}</p>
+                          <p>بازگردانی به منبع اصلی کیف پول: {toPersianDigits(formatCurrency(source.walletRestoreAmount, { currencyLabel: cancellationCurrencyLabel }))}</p>
+                          <p>بازگردانده نمی‌شود: {toPersianDigits(formatCurrency(source.notReturnedAmount, { currencyLabel: cancellationCurrencyLabel }))}</p>
                           {source.expiresAtUtc && <p>تاریخ انقضا: {formatDateTime(source.expiresAtUtc)}</p>}
                           {source.expired && <p className="text-destructive">منقضی‌شده</p>}
                         </div>

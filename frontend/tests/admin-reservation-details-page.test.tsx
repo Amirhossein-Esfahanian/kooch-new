@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
@@ -47,6 +47,45 @@ describe("dedicated Admin reservation details", () => {
     render(<DetailsPage />);
     await screen.findByRole("heading", { level: 1, name: /R-/ });
     expect(mocks.request.mock.calls.filter(([path]) => path === "/admin/reservations/37")).toHaveLength(2);
+  });
+
+  it("submits cancellation only after final confirmation and refreshes the real financial outcome and actions", async () => {
+    const financial = { paidCancellation: true, grossPaidAmount: 5_000_000, currency: "IRR", mode: null,
+      guestRefundAmount: null, finalPropertyShare: null, finalKoochShare: null,
+      refundPending: false, alreadyHandledByLegacyRefundV1: false };
+    let current: Record<string, unknown> = { ...item, cancellationFinancial: financial };
+    mocks.request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/admin/reservations/37/cancel" && init?.method === "PUT") {
+        current = { ...item, status: "Cancelled", allowedStatusTransitions: [], cancellationFinancial: {
+          ...financial, mode: "AutomaticFullRefundV1", guestRefundAmount: 5_000_000,
+          finalPropertyShare: 0, finalKoochShare: 0, refundPending: true,
+          cashRefundPendingAmount: 5_000_000, cashRefundExecutedAmount: 0,
+        } };
+        return { ...current, cancellationOutcome: { paidCancellation: true, refundPending: true } };
+      }
+      if (path === "/admin/reservations/37") return current;
+      if (path === "/admin/reservations/37/activities" || path === "/admin/manual-payments/reservation/37") return [];
+      throw new Error(path);
+    });
+    render(<DetailsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "لغو رزرو" }));
+    const dialog = await screen.findByRole("dialog", { name: "لغو رزرو R-855759" });
+    fireEvent.change(within(dialog).getByLabelText(/دلیل لغو/), { target: { value: "GuestRequest" } });
+    fireEvent.change(within(dialog).getByLabelText(/توضیحات لغو/), { target: { value: "درخواست مهمان" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید و لغو رزرو" }));
+    expect(mocks.request.mock.calls.filter(([, init]) => init?.method === "PUT")).toHaveLength(0);
+    const confirmation = screen.getByRole("dialog", { name: "تأیید نهایی لغو رزرو" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "لغو قطعی رزرو" }));
+    expect(await screen.findByText("بازپرداخت نقدی در انتظار انجام")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "لغو رزرو" })).toBeNull();
+    expect(screen.queryByText("بازپرداخت نقدی ثبت شده است.")).toBeNull();
+    expect(screen.getByRole("button", { name: "ثبت بازپرداخت" })).toBeTruthy();
+    await waitFor(() => expect(mocks.request.mock.calls.filter(([path]) => path === "/admin/reservations/37")).toHaveLength(2));
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/admin/manual-payments/reservation/37")).toHaveLength(2);
+    const writes = mocks.request.mock.calls.filter(([, init]) => init?.method === "PUT");
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0][1].body)).toEqual({ reason: "GuestRequest", explanation: "درخواست مهمان",
+      idempotencyKey: expect.any(String), financialResolution: { mode: "AutomaticFullRefundV1" } });
   });
 
   it("preserves the list filters and page through a reloadable return link", async () => {

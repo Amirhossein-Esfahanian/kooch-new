@@ -253,7 +253,7 @@ describe("reservation hardening", () => {
     fireEvent.change(await screen.findByLabelText(/دلیل لغو/), {
       target: { value: "GuestRequest" },
     });
-    fireEvent.click(await screen.findByRole("button", { name: "تایید و لغو رزرو" }));
+    fireEvent.click(await screen.findByRole("button", { name: "تأیید و لغو رزرو" }));
 
     expect(screen.getByText("توضیحات لغو را وارد کنید.")).toBeTruthy();
     expect(screen.queryByText("تایید نهایی لغو رزرو")).toBeNull();
