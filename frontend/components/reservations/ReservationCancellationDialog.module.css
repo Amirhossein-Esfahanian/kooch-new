@@ -1,0 +1,33 @@
+.dialog {
+  max-width: 35rem;
+  height: auto;
+  max-height: min(90vh, calc(100dvh - 2rem));
+}
+
+.dialogBody { padding: 1rem 1.25rem; }
+.fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+.body { display: grid; gap: 1rem; }
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem 1rem;
+  padding-block-end: 1rem;
+  border-block-end: 1px solid var(--border);
+  font-size: .8125rem;
+  overflow-wrap: anywhere;
+}
+.impact { display: grid; gap: .75rem; }
+.consequences {
+  display: grid;
+  gap: .5rem;
+  padding: .875rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--muted);
+  font-size: .8125rem;
+  line-height: 1.8;
+}
+@media (max-width: 400px) {
+  .summary { grid-template-columns: 1fr; }
+  .dialogBody { padding: 1rem; }
+}

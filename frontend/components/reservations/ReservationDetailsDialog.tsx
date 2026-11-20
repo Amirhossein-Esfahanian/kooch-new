@@ -32,7 +32,8 @@ import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { bookedRatePlanLabel } from "@/lib/booked-rate-plan";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
-import { apiRequest } from "@/lib/owner-api";
+import { apiRequest, ApiRequestError } from "@/lib/owner-api";
+import cancellationStyles from "./ReservationCancellationDialog.module.css";
 
 interface ReservationDetailsDialogProps {
   presentation?: "dialog" | "page";
@@ -865,7 +866,7 @@ function fundingSourceLabel(source: { sourceType: string; withdrawable: boolean 
     source.withdrawable ? "اعتبار قابل برداشت" : "اعتبار غیرقابل برداشت";
 }
 
-function ReservationCancellationAlert({
+function ReservationCancellationDialog({
   onClose,
   onConfirm,
   reservation,
@@ -876,7 +877,9 @@ function ReservationCancellationAlert({
   reservation: ReservationTableItem;
   financial?: ReservationCancellationFinancialState | null;
 }) {
-  const currencyLabel = useSiteCurrencyLabel();
+  const currency = financial?.currency || reservation.currency;
+  const cancelRef = useRef<HTMLButtonElement>(null);
+  const [serverError, setServerError] = useState("");
   const [reason, setReason] = useState<ReservationCancellationReason | "">("");
   const [explanation, setExplanation] = useState("");
   const [reasonError, setReasonError] = useState("");
@@ -905,9 +908,7 @@ function ReservationCancellationAlert({
   }) ?? [];
   const cashTotal = sourceRows.reduce((sum, row) => sum + (row.cash ?? 0), 0);
   const walletTotal = sourceRows.reduce((sum, row) => sum + (row.wallet ?? 0), 0);
-  const notReturnedTotal = sourceRows.reduce((sum, row) => sum + (row.retained ?? 0), 0);
   const [validationAttempted, setValidationAttempted] = useState(false);
-  const [confirmationReady, setConfirmationReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const operationKeyRef = useRef<string | null>(null);
@@ -924,11 +925,11 @@ function ReservationCancellationAlert({
     ? grossCents !== null && sourceRows.length > 0 && sourceRows.every((r) => r.valid) &&
       propertyCents !== null && koochCents !== null && forfeitedCents !== null && fundingTotal === grossCents
     : grossCents !== null && splitCents === grossCents;
-  const displayMoney = (amount: number | null) =>
-    toPersianDigits(formatCurrency(amount, { currencyLabel }));
-  const invalidateOperation = () => { operationKeyRef.current = null; };
+  const displayMoney = (amount: number | null, code = currency) =>
+    toPersianDigits(formatCurrency(amount, { currencyLabel: code === "IRR" ? "ریال" : code || "واحد نامشخص" }));
+  const invalidateOperation = () => { operationKeyRef.current = null; setServerError(""); };
 
-  function continueCancellation() {
+  async function confirmCancellation() {
     const trimmedExplanation = explanation.trim();
     const nextReasonError = reason ? "" : "دلیل لغو را انتخاب کنید.";
     const nextExplanationError = trimmedExplanation
@@ -941,12 +942,8 @@ function ReservationCancellationAlert({
     if (nextReasonError || nextExplanationError || !reason || paid && (manual || fundingManual) && !validSplit ||
         paid && grossCents === null) return;
 
-    setConfirmationReady(true);
-  }
-
-  async function confirmCancellation() {
-    if (!reason || !explanation.trim() || submittingRef.current ||
-        paid && (grossCents === null || (manual || fundingManual) && !validSplit)) return;
+    if (submittingRef.current) return;
+    setServerError("");
     submittingRef.current = true;
     setSubmitting(true);
     try {
@@ -975,8 +972,16 @@ function ReservationCancellationAlert({
       });
       operationKeyRef.current = null;
       onClose();
-    } catch {
-      // The page reports the API error; retain this form and key for an exact retry.
+    } catch (error) {
+      // Retain the decision and idempotency key for an exact retry.
+      const body = error instanceof ApiRequestError && error.body && typeof error.body === "object"
+        ? error.body as { code?: string; errors?: Record<string, unknown> } : null;
+      const messages = Object.values(body?.errors ?? {}).flatMap((value) =>
+        Array.isArray(value) ? value.filter((message): message is string => typeof message === "string") : []);
+      setServerError(body?.code === "PostSettlementNettingRequired"
+        ? "این رزرو قبلاً تسویه شده است؛ لغو مالی به فرایند اصلاح تسویه نیاز دارد."
+        : messages.length ? messages.join(" ")
+        : error instanceof Error ? error.message : "لغو رزرو انجام نشد. اطلاعات را بررسی و دوباره تلاش کنید.");
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
@@ -984,62 +989,22 @@ function ReservationCancellationAlert({
   }
 
   return (
-    <KoochAlert
-      className="p-4"
-      title={
-        confirmationReady
-          ? "تایید نهایی لغو رزرو"
-          : `لغو رزرو ${reservation.reservationNumber}`
-      }
-      variant="destructive"
-    >
-      {confirmationReady ? (
-        <div className="grid gap-3 pt-2">
-          <p>لغو رزرو نهایی شود؟ پس از لغو، رزرو فقط قابل مشاهده خواهد بود.</p>
-          <p>
-            دلیل: {reason ? cancellationReasonLabels[reason] : "-"}
-            <br />
-            یادداشت: {explanation.trim() || "-"}
-          </p>
-          {paid && (
-            <p className="text-sm text-foreground">
-              مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}<br />
-              حالت مالی: {manual || fundingManual ? "تعیین دستی مبالغ" : "بازپرداخت کامل پیش‌فرض"}
-            </p>
-          )}
-          {paid && (
-            <dl className="grid gap-2 text-sm">
-              {[
-                ["بازپرداخت نقدی", fundingManual ? cashTotal / 100 : manual ? guestCents! / 100 : financial?.grossPaidAmount ?? 0],
-                ["بازگشت به کیف پول", fundingManual ? walletTotal / 100 : 0],
-                ...(fundingManual ? [["بازگردانده نمی‌شود", notReturnedTotal / 100]] : []),
-                ["سهم اقامتگاه", manual || fundingManual ? propertyCents! / 100 : 0],
-                ["سهم کوچ", manual || fundingManual ? koochCents! / 100 : 0],
-                ["سوخت‌شده", fundingManual ? forfeitedCents! / 100 : 0],
-              ].map(([label, amount]) => <div key={String(label)} className="flex justify-between gap-3"><dt>{label}</dt><dd>{displayMoney(Number(amount))}</dd></div>)}
-            </dl>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <KoochButton
-              disabled={paid && (grossCents === null || (manual || fundingManual) && !validSplit)}
-              loading={submitting}
-              onClick={confirmCancellation}
-              variant="destructive"
-            >
-              تایید و لغو رزرو
-            </KoochButton>
-            <KoochButton
-              disabled={submitting}
-              onClick={() => setConfirmationReady(false)}
-              variant="outline"
-            >
-              بازگشت
-            </KoochButton>
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-4 pt-2">
-          <section className="grid gap-2 text-sm sm:grid-cols-2" aria-label="خلاصه رزرو">
+    <KoochDialog open title={`لغو رزرو ${reservation.reservationNumber}`}
+      description="دلیل و پیامدهای لغو را بررسی کنید؛ این اقدام نهایی است."
+      size="sm" className={cancellationStyles.dialog} bodyClassName={cancellationStyles.dialogBody}
+      closeDisabled={submitting} initialFocusRef={cancelRef}
+      onOpenChange={(open) => { if (!open && !submittingRef.current) onClose(); }}
+      footer={<>
+        <KoochButton type="button" variant="destructive" loading={submitting}
+          disabled={fundingManual && !validSplit || paid && grossCents === null}
+          onClick={() => void confirmCancellation()}>تایید و لغو رزرو</KoochButton>
+        <KoochButton ref={cancelRef} type="button" variant="outline" disabled={submitting} onClick={onClose}>انصراف</KoochButton>
+      </>}>
+      <fieldset aria-label="اطلاعات لغو رزرو" disabled={submitting} className={cancellationStyles.fields}>
+        <div className={cancellationStyles.body}>
+          {serverError && <KoochAlert variant="destructive" title="لغو رزرو انجام نشد">{serverError}</KoochAlert>}
+          {paid && grossCents === null && <KoochAlert variant="warning" title="اطلاعات مالی کامل نیست">مبلغ پرداخت‌شده در دسترس نیست. دیالوگ را ببندید و جزئیات رزرو را دوباره دریافت کنید.</KoochAlert>}
+          <section className={cancellationStyles.summary} aria-label="خلاصه رزرو">
             {([
               ["اقامتگاه", reservation.propertyName || "-"],
               ["مهمان", reservation.guestFullName || reservation.guestName || "-"],
@@ -1050,10 +1015,11 @@ function ReservationCancellationAlert({
             ] as const).map(([label, value]) => (
               <div key={label} className="flex flex-wrap gap-2"><span className="text-muted-foreground">{label}:</span><span>{value}</span></div>
             ))}
-            {paid && <div className="flex flex-wrap gap-2"><span className="text-muted-foreground">مبلغ کل رزرو:</span><span>{displayMoney(financial?.grossPaidAmount ?? null)}</span></div>}
+            <div className="flex flex-wrap gap-2"><span className="text-muted-foreground">مبلغ ثبت‌شده رزرو (پیش از لغو):</span><span>{displayMoney(reservation.finalAmount ?? reservation.totalPrice ?? null, reservation.currency)}</span></div>
           </section>
           <KoochField error={reasonError} label="دلیل لغو" required>
             <KoochSelect
+              required
               error={reasonError}
               onChange={(event) => {
                 invalidateOperation();
@@ -1074,9 +1040,11 @@ function ReservationCancellationAlert({
             </KoochSelect>
           </KoochField>
 
-          <KoochField error={explanationError} label="توضیحات لغو" required>
+          <KoochField helperText="طبق قرارداد فعلی، ثبت توضیح برای لغو الزامی است." error={explanationError} label="توضیحات لغو" required>
             <KoochTextarea
+              required
               error={explanationError}
+              rows={2}
               maxLength={2000}
               onChange={(event) => {
                 invalidateOperation();
@@ -1089,7 +1057,7 @@ function ReservationCancellationAlert({
           </KoochField>
 
           {paid && (
-            <section className="grid gap-3 rounded-lg border border-border bg-muted p-3" aria-label="تسویه مالی لغو رزرو">
+            <section className={cancellationStyles.impact} aria-label="تسویه مالی لغو رزرو">
               <h3 className="font-semibold text-foreground">تسویه مالی لغو رزرو</h3>
               <p className="text-sm text-foreground">مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}</p>
               {funding && (
@@ -1115,7 +1083,7 @@ function ReservationCancellationAlert({
                 </section>
               )}
               {!requiresManual && <p className="text-sm text-muted-foreground">
-                در حالت پیش‌فرض، کل مبلغ پرداخت‌شده به مهمان بازپرداخت می‌شود و سهم نهایی اقامتگاه و کوچ صفر خواهد بود.
+                در حالت پیش‌فرض، کل مبلغ پرداخت‌شده برای بازپرداخت نقدی تعیین می‌شود و سهم نهایی اقامتگاه و کوچ صفر است. ثبت لغو به معنی انجام بازپرداخت نقدی نیست.
               </p>}
               {!requiresManual && <KoochCheckbox checked={manual} label="می‌خواهم مبالغ را دستی تعیین کنم"
                 onChange={(event) => { invalidateOperation(); setManual(event.target.checked); }} />}
@@ -1191,7 +1159,7 @@ function ReservationCancellationAlert({
                   </div>
                   <dl className="grid gap-2 border-t border-border pt-3 text-sm" aria-live="polite">
                     {[
-                      ["مبلغ کل رزرو", grossCents ?? 0], ["بازپرداخت نقدی به مهمان", cashTotal],
+                      ["مبلغ پرداخت‌شده", grossCents ?? 0], ["بازپرداخت نقدی به مهمان", cashTotal],
                       ["بازگشت به کیف پول", walletTotal], ["سهم نهایی اقامتگاه", propertyCents ?? 0],
                       ["سهم نهایی کوچ", koochCents ?? 0], ["اعتبار/مبلغ سوخت‌شده", forfeitedCents ?? 0],
                       ["اختلاف", (grossCents ?? 0) - fundingTotal],
@@ -1207,17 +1175,18 @@ function ReservationCancellationAlert({
             </section>
           )}
 
-          <div className="flex flex-wrap gap-2">
-            <KoochButton onClick={continueCancellation} variant="destructive" disabled={fundingManual && !validSplit}>
-              ادامه لغو رزرو
-            </KoochButton>
-            <KoochButton onClick={onClose} variant="outline">
-              انصراف
-            </KoochButton>
-          </div>
+          <section className={cancellationStyles.consequences} aria-label="پیامدهای لغو">
+            <h3 className="font-semibold">پیامدهای لغو</h3>
+            <p>پس از تأیید، این رزرو لغو و فقط قابل مشاهده خواهد بود. سایر رزروهای سفارش با این اقدام لغو نمی‌شوند.</p>
+            {!paid && <p>در این فرم مبلغی برای استرداد تعیین نمی‌شود؛ وضعیت مالی را سرور بررسی می‌کند.</p>}
+            {paid && <>
+              <p>مبالغ تخصیص‌یافته برای بازپرداخت، با بازپرداخت انجام‌شده متفاوت‌اند. پرداخت نقدی در فرایند جداگانه ثبت می‌شود.</p>
+              {financial?.cashRefundPendingAmount != null && <p>بازپرداخت نقدی در انتظار ثبت: {displayMoney(financial.cashRefundPendingAmount)}</p>}
+            </>}
+          </section>
         </div>
-      )}
-    </KoochAlert>
+      </fieldset>
+    </KoochDialog>
   );
 }
 
@@ -1639,7 +1608,6 @@ export function ReservationDetailsDialog({
             : []),
         ];
   const [cancellationOpen, setCancellationOpen] = useState(false);
-  const cancellationFormRef = useRef<HTMLDivElement>(null);
   const cancellationTriggerRef = useRef<HTMLButtonElement>(null);
   const [supportRequestOpen, setSupportRequestOpen] = useState(false);
   const [rejectRequestOpen, setRejectRequestOpen] = useState(false);
@@ -1668,38 +1636,8 @@ export function ReservationDetailsDialog({
     !reservation.isPaymentExpired &&
     isUnpaidReservation(reservation);
 
-  useEffect(() => {
-    if (!open || !cancellationOpen || !canCancel) return;
-    const frame = window.requestAnimationFrame(() => {
-      const form = cancellationFormRef.current;
-      const body = form?.closest<HTMLElement>('[data-slot="dialog-body"]');
-      const reason = form?.querySelector<HTMLSelectElement>("select");
-      if (!form || !reason) return;
-      if (presentation === "page") {
-        reason.scrollIntoView({ block: "center", behavior: "instant" });
-        reason.focus({ preventScroll: true });
-        return;
-      }
-      if (!body) return;
-      const bodyBounds = body.getBoundingClientRect();
-      const formBounds = form.getBoundingClientRect();
-      body.scrollTop = Math.max(0, body.scrollTop + Math.max(
-        formBounds.top - bodyBounds.top,
-        reason.getBoundingClientRect().bottom - bodyBounds.bottom + 16,
-      ));
-      reason.focus({ preventScroll: true });
-    });
-    return () => window.cancelAnimationFrame(frame);
-  }, [open, cancellationOpen, canCancel, presentation]);
-
   function closeCancellation() {
     setCancellationOpen(false);
-    window.requestAnimationFrame(() => {
-      if (open && cancellationTriggerRef.current?.isConnected) {
-        if (presentation === "page") cancellationTriggerRef.current.scrollIntoView?.({ block: "nearest", behavior: "instant" });
-        cancellationTriggerRef.current.focus({ preventScroll: true });
-      }
-    });
   }
 
   useEffect(() => {
@@ -1867,7 +1805,7 @@ export function ReservationDetailsDialog({
                 })}
             </ReservationActionGroup>
             <ReservationActionGroup kind="cancellation" presentation={presentation}>
-            {reservation && canCancel && !pendingCancellationRequest && !cancellationOpen && (
+            {reservation && canCancel && !pendingCancellationRequest && (
               <KoochButton
                 ref={cancellationTriggerRef}
                 onClick={() => setCancellationOpen(true)}
@@ -1907,6 +1845,7 @@ export function ReservationDetailsDialog({
           onOpenChange(nextOpen);
         }}
         open={open}
+        closeDisabled={cancellationOpen}
         size="xl"
         title="جزئیات رزرو"
       >
@@ -1923,8 +1862,7 @@ export function ReservationDetailsDialog({
             )}
 
             {cancellationOpen && canCancel && (
-              <div ref={cancellationFormRef}>
-                <ReservationCancellationAlert
+                <ReservationCancellationDialog
                   key={reservation.reservationNumber}
                   financial={reservation.cancellationFinancial}
                   onClose={closeCancellation}
@@ -1933,7 +1871,6 @@ export function ReservationDetailsDialog({
                   }}
                   reservation={reservation}
                 />
-              </div>
             )}
 
             {presentation === "dialog" && <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3">

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
+import { ApiRequestError } from "@/lib/owner-api";
 import type { ReservationTableItem } from "@/components/reservations/ReservationTable";
 
 vi.mock("@/lib/currency", () => ({
@@ -42,7 +43,7 @@ const funding = {
 };
 
 function fillFundingSplit() {
-  const groups = screen.getAllByRole("group");
+  const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
   const change = (root: HTMLElement, label: string, value: string) => fireEvent.change(within(root).getByLabelText(label, { exact: false }), { target: { value } });
   change(groups[0], "بازپرداخت نقدی", "300");
   change(groups[0], "بازگردانده نمی‌شود", "100");
@@ -70,7 +71,7 @@ describe("Admin funding-aware cancellation V2", () => {
     expect(within(summary).getByText("مهمان آزمون")).toBeTruthy();
     expect(within(summary).getByText("تایید شده")).toBeTruthy();
     expect(within(summary).getByText("IRR")).toBeTruthy();
-    expect(within(summary).getByText("۱۰۰۰ واحد")).toBeTruthy();
+    expect(within(summary).getByText("۹۰۰۰ واحد")).toBeTruthy();
     const sources = screen.getByRole("region", { name: "منابع پرداخت" });
     expect(within(sources).getByText("پرداخت خارجی")).toBeTruthy();
     expect(within(sources).getByText(/بازپرداخت نقدی، بازگردانده نمی‌شود/)).toBeTruthy();
@@ -87,38 +88,37 @@ describe("Admin funding-aware cancellation V2", () => {
     renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: {
       ...financial, funding: walletFunding } }) });
     await openCancellation();
-    const groups = screen.getAllByRole("group");
+    const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
     expect(groups).toHaveLength(2);
     expect(within(groups[0]).getByLabelText(/بازپرداخت نقدی/)).toBeTruthy();
     expect(within(groups[0]).getByLabelText(/بازگشت به کیف پول/)).toBeTruthy();
     expect(within(groups[1]).queryByLabelText(/بازپرداخت نقدی/)).toBeNull();
-    expect((screen.getByRole("button", { name: "ادامه لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "تایید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("renders authoritative funding capabilities and expiry without an automatic wallet decision", async () => {
     renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
     await openCancellation();
     expect(screen.queryByRole("checkbox")).toBeNull();
-    const groups = screen.getAllByRole("group");
+    const groups = within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group");
     expect(groups).toHaveLength(3);
     expect(within(groups[0]).queryByLabelText(/بازگشت به کیف پول/)).toBeNull();
     expect(within(groups[1]).getByLabelText(/بازپرداخت نقدی/)).toBeTruthy();
     expect(within(groups[1]).getByLabelText(/بازگشت به کیف پول/)).toBeTruthy();
     expect(within(groups[2]).queryByLabelText(/بازپرداخت نقدی/)).toBeNull();
     expect(within(groups[2]).getByText(/منقضی شده و قابل استفاده نخواهد بود/)).toBeTruthy();
-    expect((screen.getByRole("button", { name: "ادامه لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "تایید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("reconciles live, confirms exact totals and sends only opaque source decisions", async () => {
     const onCancel = vi.fn().mockResolvedValue(undefined);
     renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
     await openCancellation(); fillCancellation(); fillFundingSplit();
-    fireEvent.click(screen.getByRole("button", { name: "ادامه لغو رزرو" }));
-    const confirmation = screen.getByRole("alert");
-    expect(within(confirmation).getByText(/لغو رزرو نهایی شود/)).toBeTruthy();
+    const confirmation = screen.getByRole("dialog", { name: "لغو رزرو R-123456" });
+    expect(within(confirmation).getByRole("region", { name: "پیامدهای لغو" })).toBeTruthy();
     expect(within(confirmation).getAllByText("۴۰۰ واحد").length).toBeGreaterThan(0);
     expect(within(confirmation).getAllByText("۳۰۰ واحد").length).toBeGreaterThan(0);
-    expect(within(confirmation).getByText("بازگردانده نمی‌شود")).toBeTruthy();
+    expect(within(confirmation).getAllByText("بازگردانده نمی‌شود").length).toBeGreaterThan(0);
     expect(onCancel).not.toHaveBeenCalled();
     fireEvent.click(within(confirmation).getByRole("button", { name: "تایید و لغو رزرو" }));
     await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
@@ -137,9 +137,9 @@ describe("Admin funding-aware cancellation V2", () => {
     renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
     await openCancellation(); fillCancellation(); fillFundingSplit();
     if (kind === "sum") fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "101" } });
-    else fireEvent.change(within(screen.getAllByRole("group")[0]).getByLabelText(/بازپرداخت نقدی/),
+    else fireEvent.change(within(within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getAllByRole("group")[0]).getByLabelText(/بازپرداخت نقدی/),
       { target: { value: kind === "source" ? "299" : kind === "negative" ? "-1" : "299.999" } });
-    expect((screen.getByRole("button", { name: "ادامه لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "تایید و لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
     expect(onCancel).not.toHaveBeenCalled();
   });
 
@@ -193,6 +193,7 @@ function renderDialog(props: Partial<ComponentProps<typeof ReservationDetailsDia
 
 async function openCancellation() {
   fireEvent.click(await screen.findByRole("button", { name: "لغو رزرو" }));
+  await screen.findByRole("dialog", { name: "لغو رزرو R-123456" });
 }
 
 function fillCancellation() {
@@ -201,7 +202,6 @@ function fillCancellation() {
 }
 
 function confirmCancellation() {
-  fireEvent.click(screen.getByRole("button", { name: "ادامه لغو رزرو" }));
   fireEvent.click(screen.getByRole("button", { name: "تایید و لغو رزرو" }));
 }
 
@@ -218,6 +218,52 @@ describe("Admin reservation cancellation financial UI", () => {
     vi.stubGlobal("crypto", { randomUUID: () => `operation-${++key}` });
   });
   afterEach(() => vi.unstubAllGlobals());
+
+  it("validates required fields, exposes server validation and preserves the decision for retry", async () => {
+    const onCancel = vi.fn().mockRejectedValue(new ApiRequestError("Validation failed", 400,
+      { errors: { Explanation: ["توضیح دقیق‌تری برای لغو وارد کنید."] } }));
+    renderDialog({ presentation: "page", onCancel, reservation: reservation({ cancellationFinancial: null }) });
+    await openCancellation();
+    fireEvent.click(screen.getByRole("button", { name: "تایید و لغو رزرو" }));
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/دلیل لغو/).getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByLabelText(/توضیحات لغو/).getAttribute("aria-invalid")).toBe("true");
+    fillCancellation();
+    confirmCancellation();
+    expect(await screen.findByText("توضیح دقیق‌تری برای لغو وارد کنید.")).toBeTruthy();
+    expect(screen.getByLabelText(/توضیحات لغو/)).toHaveProperty("value", "درخواست مهمان");
+    expect(screen.getByRole("dialog", { name: "لغو رزرو R-123456" })).toBeTruthy();
+  });
+
+  it("blocks duplicate cancellation and dismissal while saving, then closes on success", async () => {
+    let finish!: () => void;
+    const onCancel = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
+    renderDialog({ presentation: "page", onCancel });
+    await openCancellation();
+    fillCancellation();
+    const dialog = screen.getByRole("dialog", { name: "لغو رزرو R-123456" });
+    const submit = within(dialog).getByRole("button", { name: "تایید و لغو رزرو" });
+    fireEvent.click(submit); fireEvent.click(submit);
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "بستن" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    expect(onCancel).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("dialog", { name: "لغو رزرو R-123456" })).toBeTruthy();
+    expect(within(dialog).getByLabelText(/توضیحات لغو/).closest("fieldset")).toHaveProperty("disabled", true);
+    finish();
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "لغو رزرو R-123456" })).toBeNull());
+  });
+
+  it("separates the historical amount, actual paid funds and pending cash refund without promising execution", async () => {
+    renderDialog({ onCancel: vi.fn(), reservation: reservation({ currency: "IRR", cancellationFinancial: {
+      ...financial, cashRefundPendingAmount: 200,
+    } }) });
+    await openCancellation();
+    expect(within(screen.getByRole("region", { name: "خلاصه رزرو" })).getByText(/۹۰۰۰/)).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).getByText(/مبلغ پرداخت‌شده: ۱۰۰۰/)).toBeTruthy();
+    expect(screen.getByText(/بازپرداخت نقدی در انتظار ثبت: ۲۰۰/)).toBeTruthy();
+    expect(screen.getByText(/ثبت لغو به معنی انجام بازپرداخت نقدی نیست/)).toBeTruthy();
+  });
 
   it.each([null, undefined, { ...financial, paidCancellation: false }])(
     "keeps the unpaid/unknown cancellation form without financial inference: %s", async (cancellationFinancial) => {
@@ -256,8 +302,8 @@ describe("Admin reservation cancellation financial UI", () => {
     await openCancellation();
     fillCancellation();
     setManualSplit("-1", "", "0");
-    fireEvent.click(screen.getByRole("button", { name: "ادامه لغو رزرو" }));
-    expect(screen.queryByRole("button", { name: "تایید و لغو رزرو" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "تایید و لغو رزرو" }));
+    expect(screen.getByRole("button", { name: "تایید و لغو رزرو" })).toBeTruthy();
     expect(onCancel).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: "500.25" } });
     fireEvent.change(screen.getByLabelText(/سهم نهایی اقامتگاه/), { target: { value: "300" } });
@@ -284,7 +330,6 @@ describe("Admin reservation cancellation financial UI", () => {
     fireEvent.click(screen.getByRole("button", { name: "تایید و لغو رزرو" }));
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(2));
     expect(onCancel.mock.calls[0][1].idempotencyKey).toBe(onCancel.mock.calls[1][1].idempotencyKey);
-    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
     fireEvent.change(screen.getByLabelText(/دلیل لغو/), { target: { value: "Other" } });
     confirmCancellation();
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(3));
@@ -299,7 +344,6 @@ describe("Admin reservation cancellation financial UI", () => {
     setManualSplit("500", "300", "200");
     confirmCancellation();
     await waitFor(() => expect(onCancel).toHaveBeenCalledTimes(1));
-    fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
     fireEvent.change(screen.getByLabelText(/مبلغ بازپرداخت به مهمان/), { target: { value: "600" } });
     fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "100" } });
     confirmCancellation();
@@ -551,6 +595,7 @@ describe("Admin guest cancellation request in reservation details", () => {
     renderDialog({ reservation: reservation({ cancellationRequest: pendingRequest }), onCancel: vi.fn() });
     await screen.findByRole("dialog", { name: "جزئیات رزرو" });
     fireEvent.click(screen.getByRole("button", { name: "بررسی و انجام لغو" }));
+    await screen.findByRole("dialog", { name: "لغو رزرو R-123456" });
     expect(screen.getByLabelText(/دلیل لغو/)).toHaveProperty("value", "");
     expect(screen.getByLabelText(/توضیحات لغو/)).toHaveProperty("value", "");
     expect(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).toBeTruthy();
