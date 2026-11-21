@@ -23,7 +23,12 @@ public sealed class ManualOrderBalanceResponse
     public string Currency { get; set; } = string.Empty;
     public bool CanSettle { get; set; }
     public string? UnavailableReason { get; set; }
+    public int ReservationCount { get; set; }
+    public IReadOnlyList<ManualOrderBalanceReservationResponse> Reservations { get; set; } = [];
 }
+
+public sealed record ManualOrderBalanceReservationResponse(int ReservationId, string? ReservationNumber,
+    decimal RemainingAmount, decimal AllocationAmount);
 
 public sealed class ManualOrderSettlementResponse
 {

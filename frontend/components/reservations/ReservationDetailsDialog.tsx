@@ -11,7 +11,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
-import { ManualOrderSettlement } from "./ManualOrderSettlement";
+import { ManualOrderSettlement, type ManualOrderBalance } from "./ManualOrderSettlement";
 import { cancellationCashStatus, ReservationFinancialSummary, ReservationFinancialDetails, ReservationPricingBreakdown, ReservationPaymentRow } from "./ReservationFinancialTab";
 import { ReservationDetailsSurface, ReservationDetailsTabs, type ReservationDetailsTab } from "./ReservationDetailsSurface";
 import {
@@ -1460,11 +1460,13 @@ function ManualPaymentCreateDialog({
   onSubmit,
   open,
   reservation,
+  orderReceiptAction,
 }: {
   onOpenChange: (open: boolean) => void;
   onSubmit: (payload: AdminManualPaymentCreatePayload) => Promise<void>;
   open: boolean;
   reservation: ReservationTableItem;
+  orderReceiptAction?: ReactNode;
 }) {
   const initialAmount = reservation.remainingAmount ?? reservation.finalAmount ?? reservation.totalPrice;
   const [amount, setAmount] = useState(initialAmount?.toString() ?? "");
@@ -1540,9 +1542,20 @@ function ManualPaymentCreateDialog({
       }
       onOpenChange={onOpenChange}
       open={open}
-      size="md"
+      size="sm"
       title="ثبت پرداخت دستی"
     >
+      <div className="mb-3 grid gap-2 text-sm">
+        <p>ثبت دریافت برای رزرو <bdi>{reservation.reservationNumber}</bdi></p>
+        <p>ماندهٔ این رزرو: {typeof reservation.remainingAmount === "number" ? formatCurrency(reservation.remainingAmount, {
+          currencyLabel: currency === "IRR" ? "ریال" : currency || "واحد نامشخص",
+        }) : "نامشخص"}</p>
+        <p className="text-muted-foreground">این رسید برای بررسی ثبت می‌شود؛ ثبت آن به‌تنهایی تأیید پرداخت یا رزرو نیست. این اقدام از مهمان وجه برداشت نمی‌کند.</p>
+        {orderReceiptAction && <div className="grid justify-items-start gap-2 border-b border-border pb-3">
+          <p className="text-muted-foreground">مسیر جداگانهٔ کل سفارش، رسید را طبق قواعد موجود به‌صورت تأییدشده ثبت می‌کند.</p>
+          {orderReceiptAction}
+        </div>}
+      </div>
       <form className="grid gap-4 md:grid-cols-2" id="manual-payment-form" onSubmit={submit}>
         <KoochField error={errors.amount} label="مبلغ" required>
           <KoochInput
@@ -1581,11 +1594,14 @@ function ManualPaymentCreateDialog({
             value={paymentDate}
           />
         </KoochField>
-        <KoochField label="ساعت پرداخت (اختیاری)">
-          <KoochInput onChange={(event) => setPaymentTime(event.target.value)} type="time" value={paymentTime} />
-        </KoochField>
         <KoochField label="شماره پیگیری">
           <KoochInput maxLength={200} onChange={(event) => setReferenceNumber(event.target.value)} value={referenceNumber} />
+        </KoochField>
+        <details className="md:col-span-2">
+          <summary className="cursor-pointer py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">جزئیات اختیاری</summary>
+          <div className="grid gap-3 pt-2 md:grid-cols-2">
+        <KoochField label="ساعت پرداخت (اختیاری)">
+          <KoochInput onChange={(event) => setPaymentTime(event.target.value)} type="time" value={paymentTime} />
         </KoochField>
         <KoochField label="بانک مقصد">
           <KoochInput maxLength={100} onChange={(event) => setDestinationBank(event.target.value)} value={destinationBank} />
@@ -1596,6 +1612,8 @@ function ManualPaymentCreateDialog({
         <KoochField className="md:col-span-2" label="یادداشت">
           <KoochTextarea maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} />
         </KoochField>
+          </div>
+        </details>
       </form>
     </KoochDialog>
   );
@@ -1787,6 +1805,9 @@ export function ReservationDetailsDialog({
   const [confirmedEditWarningOpen, setConfirmedEditWarningOpen] =
     useState(false);
   const [manualPaymentCreateOpen, setManualPaymentCreateOpen] = useState(false);
+  const [orderSettlementOpen, setOrderSettlementOpen] = useState(false);
+  const [orderBalance, setOrderBalance] = useState<ManualOrderBalance | null>(null);
+  useEffect(() => { setOrderBalance(null); }, [reservation]);
   const [approvePaymentId, setApprovePaymentId] = useState<number | null>(null);
   const [rejectPaymentId, setRejectPaymentId] = useState<number | null>(null);
   const [manualPaymentMutationId, setManualPaymentMutationId] = useState<number | null>(null);
@@ -1830,6 +1851,7 @@ export function ReservationDetailsDialog({
       setRefundOpen(false);
       setPriceAdjustmentOpen(false);
       setManualPaymentCreateOpen(false);
+      setOrderSettlementOpen(false);
       setApprovePaymentId(null);
       setRejectPaymentId(null);
     }
@@ -1873,6 +1895,9 @@ export function ReservationDetailsDialog({
     ? statusActions.find(status => ["ApprovedAwaitingPayment", "Confirmed", "Completed"].includes(status)) : undefined;
   const canPrepareManualPayment = !isReadOnly && reservation?.canPrepareManualPayment === true && Boolean(onPrepareManualPayment);
   const primaryPaymentLink = !canPrepareManualPayment && !primaryStatus && Boolean(onSendPaymentLink) && canSendPaymentLink;
+  const verifiedOrder = Boolean(reservation?.bookingSessionId && reservation.bookingSessionCode &&
+    Number.isSafeInteger(reservation.linkedReservationCount) && reservation.linkedReservationCount! > 0);
+  const singleReservationOrder = verifiedOrder && reservation?.linkedReservationCount === 1;
 
   const canRegisterPayment = !isReadOnly && reservation?.status === "ApprovedAwaitingPayment" &&
     !reservation.isPaymentExpired && Boolean(onCreateManualPayment);
@@ -1904,6 +1929,9 @@ export function ReservationDetailsDialog({
             );
   const orderAction = reservation?.bookingSessionId && reservation.source === "AdminCreated" && reservation.status !== "Cancelled" && onOrderSettled && (
               <ManualOrderSettlement key={reservation.bookingSessionId} bookingSessionId={reservation.bookingSessionId}
+                actionLabel={presentation === "page" ? "ثبت دریافت کل ماندهٔ سفارش" : undefined}
+                open={orderSettlementOpen} onOpenChange={setOrderSettlementOpen} onBalance={setOrderBalance}
+                hideTrigger={presentation === "page" && singleReservationOrder && canRegisterPayment}
                 onSettled={() => onOrderSettled(reservation)} />
             );
   const linkAction = reservation &&
@@ -1931,7 +1959,8 @@ export function ReservationDetailsDialog({
               trigger={<KoochButton variant={presentation === "page" ? "primary" : "outline"}>آماده‌سازی برای پرداخت</KoochButton>} />;
   const manualPaymentAction = canRegisterPayment && <KoochButton type="button"
     variant={presentation === "page" && primaryKind === "manual" ? "primary" : "outline"}
-    onClick={() => setManualPaymentCreateOpen(true)} size="sm">ثبت پرداخت دستی</KoochButton>;
+    onClick={() => setManualPaymentCreateOpen(true)} size="sm">{presentation !== "page" ? "ثبت پرداخت دستی" :
+      singleReservationOrder ? "ثبت دریافت وجه" : "ثبت دریافت برای این رزرو"}</KoochButton>;
   function transitionAction(nextStatus: ReservationTableStatus) {
     if (!reservation || isReadOnly || !onStatusChange) return null;
     const text = statusActionText[nextStatus] ?? {
@@ -2431,9 +2460,12 @@ export function ReservationDetailsDialog({
                   ? reservation.remainingAmount > 0 ? "پرداخت جزئی" : "پرداخت کامل" : "پرداخت ثبت‌شده"}</dd></div>
               {reservation.status === "Cancelled" && reservation.cancellationReason &&
                 <div><dt>دلیل لغو</dt><dd>{cancellationReasonLabels[reservation.cancellationReason] ?? reservation.cancellationReason}</dd></div>}
-              {reservation.bookingSessionCode && <div><dt>سفارش</dt><dd><bdi>{toPersianDigits(reservation.bookingSessionCode)}</bdi>
-                {(reservation.linkedReservationCount ?? 0) > 1 && <> · {toPersianDigits(reservation.linkedReservationCount!)} رزرو مرتبط</>}</dd></div>}
+              {reservation.bookingSessionCode && <div><dt>سفارش</dt><dd><bdi>{toPersianDigits(reservation.bookingSessionCode)}</bdi></dd></div>}
             </dl>
+            {verifiedOrder && reservation.linkedReservationCount! > 1 && <p className="text-sm text-muted-foreground">
+              این رزرو یکی از {toPersianDigits(reservation.linkedReservationCount!)} رزرو سفارش <bdi>{reservation.bookingSessionCode}</bdi> است
+            </p>}
+            {reservation.bookingSessionId && !verifiedOrder && <p className="text-sm text-muted-foreground">اطلاعات کامل عضویت سفارش در دسترس نیست؛ تعداد رزروهای سفارش مشخص نیست.</p>}
           </div>
           <div className={detailsStyles.headerActions}>
             {primaryAction}
@@ -2524,6 +2556,8 @@ export function ReservationDetailsDialog({
                   {orderAction}{primaryKind !== "link" && linkAction}
                   {statusActions.filter(status => status !== "Cancelled" && !(primaryKind === "status" && status === primaryStatus)).map(transitionAction)}
                 </div>
+                {canRegisterPayment && <p className="text-sm text-muted-foreground">دریافت تک‌رزرو فقط برای <bdi>{reservation.reservationNumber}</bdi> است؛ ماندهٔ این رزرو: {typeof reservation.remainingAmount === "number" ? formatCurrency(reservation.remainingAmount, { currencyLabel }) : "نامشخص"}. رسید پس از ثبت، نیازمند بررسی است.</p>}
+                {orderBalance && !orderBalance.canSettle && <KoochAlert title={`دریافت کل ماندهٔ سفارش ${orderBalance.sessionCode} در دسترس نیست`}>{orderBalance.unavailableReason || "علت در پاسخ سرور مشخص نشده است."}</KoochAlert>}
                 {sections?.payments}
                 <ReservationFinancialDetails>
                   <ReservationPricingBreakdown reservation={reservation} currencyLabel={currencyLabel}
@@ -2608,6 +2642,10 @@ export function ReservationDetailsDialog({
           }}
           open={manualPaymentCreateOpen}
           reservation={reservation}
+          orderReceiptAction={presentation === "page" && singleReservationOrder && orderAction ?
+            <KoochButton type="button" variant="outline" onClick={() => {
+              setManualPaymentCreateOpen(false); setOrderSettlementOpen(true);
+            }}>ثبت دریافت کل ماندهٔ سفارش</KoochButton> : undefined}
         />
       )}
       {approvePaymentId !== null && onApproveManualPayment && (

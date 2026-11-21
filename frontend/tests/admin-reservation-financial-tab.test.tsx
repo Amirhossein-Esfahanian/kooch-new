@@ -49,7 +49,7 @@ describe("dedicated Admin financial presentation", () => {
     expect(amount(summary, "مبلغ این رزرو")).toBe("۱٬۰۰۰ ریال");
     expect(amount(summary, "وجه دریافت‌شده")).toBe("۴۰۰ ریال");
     expect(amount(summary, "ماندهٔ قابل وصول")).toBe("۶۰۰ ریال");
-    expect(screen.getAllByRole("button", { name: "ثبت پرداخت دستی" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "ثبت دریافت برای این رزرو" })).toHaveLength(1);
     expect(screen.getByRole("heading", { name: "مهلت پرداخت" })).toBeTruthy();
     expect(screen.getByText("ریز محاسبات رزرو و لغو", { selector: "summary" }).closest("details")?.open).toBe(false);
   });

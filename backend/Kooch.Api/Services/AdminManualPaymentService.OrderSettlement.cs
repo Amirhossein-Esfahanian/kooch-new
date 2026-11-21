@@ -24,7 +24,11 @@ public sealed partial class AdminManualPaymentService
         {
             BookingSessionId = session.Id, SessionCode = session.SessionCode, Currency = session.Currency,
             TotalAmount = reservations.Sum(reservation => reservation.FinalAmount),
-            RemainingAmount = balances.Values.Sum(), CanSettle = reason is null, UnavailableReason = reason
+            RemainingAmount = balances.Values.Sum(), CanSettle = reason is null, UnavailableReason = reason,
+            ReservationCount = reservations.Count,
+            Reservations = reservations.Select(reservation => new ManualOrderBalanceReservationResponse(
+                reservation.Id, reservation.ReservationNumber, balances[reservation.Id],
+                reason is null ? balances[reservation.Id] : 0)).ToArray()
         };
     }
 

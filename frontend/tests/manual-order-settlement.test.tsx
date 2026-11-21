@@ -14,6 +14,13 @@ const open = async () => {
   await screen.findByText("O-123456");
   return screen.findByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" });
 };
+const openBlocked = async () => {
+  fireEvent.click(screen.getByRole("button", { name: "ثبت تسویهٔ کل سفارش" }));
+  await screen.findByText("تسویه در دسترس نیست");
+  expect(screen.queryByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" })).toBeNull();
+  expect(screen.queryByRole("combobox")).toBeNull();
+  expect(screen.queryByLabelText("شماره پیگیری (اختیاری)")).toBeNull();
+};
 
 it("loads authoritative balance, settles only on explicit confirmation, and prevents double clicks", async () => {
   let finish!: () => void;
@@ -61,14 +68,13 @@ it("preserves a failed request for idempotent retry and permits an explicit bala
 it("does not offer settlement for a blocked order and does not turn a read error into zero balance", async () => {
   mocks.api.mockResolvedValueOnce({ ...balance, canSettle: false, unavailableReason: "یک اتاق در انتظار تأیید است" });
   render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
-  const confirm = await open();
-  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  await openBlocked();
   expect(screen.getByText("یک اتاق در انتظار تأیید است")).toBeTruthy();
   mocks.api.mockRejectedValueOnce(new Error("خطای دریافت مانده"));
   fireEvent.click(screen.getByRole("button", { name: "دریافت دوبارهٔ مانده" }));
   await screen.findByText("خطای دریافت مانده");
   expect(screen.queryByText(/کل مانده:/)).toBeNull();
-  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" })).toBeNull();
 });
 
 it("does not report a committed settlement as failed when list refresh fails", async () => {
@@ -84,14 +90,12 @@ it("enables confirmation only after a refreshed server balance becomes eligible,
   const reason = "رزرو R-123456 در انتظار تأیید است؛ ابتدا رزرو را تأیید کنید، سپس ماندهٔ سفارش را دوباره دریافت کنید.";
   mocks.api.mockResolvedValueOnce({ ...balance, canSettle: false, unavailableReason: reason });
   render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
-  const confirm = await open();
-  expect((confirm as HTMLButtonElement).disabled).toBe(true);
+  await openBlocked();
   expect(screen.getByText(reason)).toBeTruthy();
-  fireEvent.click(confirm);
   expect(mocks.api).toHaveBeenCalledTimes(1);
   mocks.api.mockResolvedValueOnce(balance);
   fireEvent.click(screen.getByRole("button", { name: "دریافت دوبارهٔ مانده" }));
-  await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+  await waitFor(() => expect((screen.getByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" }) as HTMLButtonElement).disabled).toBe(false));
   expect(screen.queryByText(reason)).toBeNull();
   expect(mocks.api.mock.calls.map(([path]) => path)).toEqual([
     "/admin/manual-payments/orders/15", "/admin/manual-payments/orders/15"
@@ -106,7 +110,7 @@ it.each([
 ])("renders the server's specific block reason unchanged: %s", async reason => {
   mocks.api.mockResolvedValue({ ...balance, canSettle: false, unavailableReason: reason });
   render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
-  expect(((await open()) as HTMLButtonElement).disabled).toBe(true);
+  await openBlocked();
   expect(screen.getByText(reason)).toBeTruthy();
   expect(mocks.api).toHaveBeenCalledTimes(1);
 });

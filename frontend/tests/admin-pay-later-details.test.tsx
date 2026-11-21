@@ -64,7 +64,7 @@ it("wires the real dedicated details page from Pending capability through prepar
   fireEvent.click(prepare);
   const confirmation = await screen.findByRole("alertdialog", { name: "آماده‌سازی برای پرداخت" });
   fireEvent.click(within(confirmation).getByRole("button", { name: "آماده‌سازی برای پرداخت" }));
-  const paymentAction = await screen.findByRole("button", { name: "ثبت پرداخت دستی" });
+  const paymentAction = await screen.findByRole("button", { name: "ثبت دریافت برای این رزرو" });
   expect(screen.getAllByText("مهلت پرداخت", { exact: true }).length).toBeGreaterThan(0);
   expect(screen.queryByRole("button", { name: "آماده‌سازی برای پرداخت" })).toBeNull();
   expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/42").length).toBe(2);

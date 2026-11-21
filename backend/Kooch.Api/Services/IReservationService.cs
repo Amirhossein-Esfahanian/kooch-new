@@ -69,6 +69,9 @@ public interface IReservationService
     Task ApplyAdminManualPaymentActionsAsync(ReservationResponse response,
         (int UserId, UserRole Role) currentUser, CancellationToken cancellationToken = default);
 
+    Task ApplyAdminOrderSummaryAsync(ReservationResponse response,
+        (int UserId, UserRole Role) currentUser, CancellationToken cancellationToken = default);
+
     Task<ReservationResponse> CancelAsync(
         int reservationId,
         ReservationCancellationRequest request,

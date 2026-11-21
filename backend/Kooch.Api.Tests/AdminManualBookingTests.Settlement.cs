@@ -44,6 +44,9 @@ public sealed partial class AdminManualBookingTests
         var service = Settlements(h);
         var balance = await service.GetOrderBalanceAsync(order, 1);
         Assert.False(balance.CanSettle);
+        Assert.Equal(3, balance.ReservationCount);
+        Assert.Equal(3, balance.Reservations.Count);
+        Assert.All(balance.Reservations, row => Assert.Equal(0m, row.AllocationAmount));
         Assert.Contains(expected, balance.UnavailableReason);
         Assert.Contains(room.ReservationNumber!, balance.UnavailableReason);
         if (failure is "pending" or "pendingApproval") Assert.DoesNotContain("مهلت", balance.UnavailableReason);
@@ -86,6 +89,9 @@ public sealed partial class AdminManualBookingTests
         var balance = await service.GetOrderBalanceAsync(order, 1);
         Assert.True(balance.CanSettle);
         Assert.Equal(600m, balance.RemainingAmount);
+        Assert.Equal(3, balance.ReservationCount);
+        Assert.Equal(balance.RemainingAmount, balance.Reservations.Sum(row => row.AllocationAmount));
+        Assert.All(balance.Reservations, row => { Assert.False(string.IsNullOrWhiteSpace(row.ReservationNumber)); Assert.Equal(row.RemainingAmount, row.AllocationAmount); });
         var request = SettlementRequest(600);
         var result = await service.SettleOrderAsync(order, request, 1);
         var replay = await service.SettleOrderAsync(order, request, 1);

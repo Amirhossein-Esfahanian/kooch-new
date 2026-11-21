@@ -161,9 +161,9 @@ describe("Admin reservation details tabbed page", () => {
       paymentExpiresAtUtc: "2099-01-01T00:00:00Z", remainingPaymentSeconds: 3600,
     } });
     const header = screen.getByRole("heading", { level: 1 }).closest("header")!;
-    expect(within(header).getByRole("button", { name: "ثبت پرداخت دستی" }).className).toContain("bg-primary");
+    expect(within(header).getByRole("button", { name: "ثبت دریافت برای این رزرو" }).className).toContain("bg-primary");
     tab("پرداخت و بازپرداخت");
-    expect(screen.getAllByRole("button", { name: "ثبت پرداخت دستی" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "ثبت دریافت برای این رزرو" })).toHaveLength(1);
     const sendLink = screen.getByRole("button", { name: "ارسال لینک پرداخت" });
     expect(sendLink.className).not.toContain("bg-primary");
     fireEvent.click(sendLink);
@@ -182,10 +182,11 @@ describe("Admin reservation details tabbed page", () => {
     expect(within(header).getByText("ORDER-۸")).toBeTruthy();
     expect(within(header).queryByRole("button", { name: "ثبت تسویهٔ کل سفارش" })).toBeNull();
     tab("پرداخت و بازپرداخت");
-    fireEvent.click(screen.getByRole("button", { name: "ثبت تسویهٔ کل سفارش" }));
-    expect(await screen.findByText("سفارش دارای پرداخت جزئی است.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ثبت دریافت کل ماندهٔ سفارش" }));
+    const orderDialog = await screen.findByRole("dialog", { name: "ثبت دریافت کل ماندهٔ سفارش" });
+    expect(await within(orderDialog).findByText("سفارش دارای پرداخت جزئی است.")).toBeTruthy();
     expect(request).toHaveBeenCalledWith("/admin/manual-payments/orders/8");
-    expect(screen.getByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" })).toHaveProperty("disabled", true);
+    expect(screen.queryByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" })).toBeNull();
   });
 
   it("shows cancelled amounts as history, with recorded reason and refund actions only", () => {

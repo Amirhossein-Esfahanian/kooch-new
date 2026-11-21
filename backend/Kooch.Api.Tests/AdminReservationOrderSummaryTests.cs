@@ -6,6 +6,39 @@ namespace Kooch.Api.Tests;
 
 public sealed class AdminReservationOrderSummaryTests
 {
+    [Theory]
+    [InlineData(1)]
+    [InlineData(3)]
+    public async Task DirectDetails_UsesTheSameScopedOrderSummaryAsTheList(int count)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var rooms = new List<Reservation>();
+        for (var i = 0; i < count; i++) rooms.Add(await harness.AddReservationAsync(ReservationStatus.Confirmed));
+        await LinkAsync(harness, rooms.ToArray());
+        var details = await harness.Service.GetByIdAsync(rooms[0].Id);
+        await harness.Service.ApplyAdminOrderSummaryAsync(details, harness.SuperAdmin);
+        Assert.Equal("B-ISOLATED-ORDER", details.BookingSessionCode);
+        Assert.Equal(count, details.LinkedReservationCount);
+        var list = await harness.Service.SearchAsync(new ReservationListQuery { PageSize = 1 }, harness.SuperAdmin);
+        Assert.Equal(list.Items[0].LinkedReservationCount, details.LinkedReservationCount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DirectDetails_DoesNotExposeAnInaccessibleOrderOrMembers(bool denyAll)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync(permissionGranted: !denyAll);
+        var visible = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        var hidden = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        hidden.PropertyId = 11;
+        await LinkAsync(harness, visible, hidden);
+        var details = await harness.Service.GetByIdAsync(visible.Id);
+        await harness.Service.ApplyAdminOrderSummaryAsync(details, harness.SuperAdmin);
+        Assert.Null(details.BookingSessionCode);
+        Assert.Null(details.LinkedReservationCount);
+    }
+
     [Fact]
     public async Task MembershipCount_IsIndependentOfListFiltersAndPagination()
     {

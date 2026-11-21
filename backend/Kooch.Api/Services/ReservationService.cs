@@ -47,14 +47,21 @@ public partial class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
+        var allowedPropertyIds = await GetAdminReadablePropertyIdsAsync(currentUser.UserId, cancellationToken);
+        return await SearchInternalAsync(query, null, null, allowedPropertyIds, cancellationToken,
+            includePendingCancellationRequest: true, includeOrderSummary: true);
+    }
+
+    private async Task<List<int>> GetAdminReadablePropertyIdsAsync(int userId, CancellationToken cancellationToken)
+    {
         var propertyIds = await propertyAuthorizationService.GetAccessiblePropertiesAsync(
-            currentUser.UserId,
+            userId,
             cancellationToken);
         var allowedPropertyIds = new List<int>();
         foreach (var propertyId in propertyIds)
         {
             if (await propertyAuthorizationService.HasPropertyPermissionAsync(
-                    currentUser.UserId,
+                    userId,
                     propertyId,
                     "bookings.view",
                     cancellationToken))
@@ -63,8 +70,35 @@ public partial class ReservationService(
             }
         }
 
-        return await SearchInternalAsync(query, null, null, allowedPropertyIds, cancellationToken,
-            includePendingCancellationRequest: true, includeOrderSummary: true);
+        return allowedPropertyIds;
+    }
+
+    public async Task ApplyAdminOrderSummaryAsync(ReservationResponse response,
+        (int UserId, UserRole Role) currentUser, CancellationToken cancellationToken = default)
+    {
+        response.BookingSessionCode = null;
+        response.LinkedReservationCount = null;
+        if (response.BookingSessionId is not { } sessionId) return;
+        var allowed = await GetAdminReadablePropertyIdsAsync(currentUser.UserId, cancellationToken);
+        var summaries = await ReadAdminOrderSummariesAsync([sessionId], allowed, cancellationToken);
+        if (summaries.TryGetValue(sessionId, out var summary))
+        {
+            response.BookingSessionCode = summary.Code;
+            response.LinkedReservationCount = summary.Count;
+        }
+    }
+
+    private async Task<Dictionary<int, (string Code, int Count)>> ReadAdminOrderSummariesAsync(
+        int[] sessionIds, IReadOnlyCollection<int>? allowedPropertyIds, CancellationToken cancellationToken)
+    {
+        var sessions = dbContext.BookingSessions.AsNoTracking().Where(session => sessionIds.Contains(session.Id));
+        // The list and direct details share the same all-members scope check.
+        if (allowedPropertyIds is not null)
+            sessions = sessions.Where(session => allowedPropertyIds.Contains(session.PropertyId) && !session.Reservations.Any(reservation =>
+                !allowedPropertyIds.Contains(reservation.PropertyId)));
+        var rows = await sessions.Select(session => new
+            { session.Id, session.SessionCode, Count = session.Reservations.Count() }).ToListAsync(cancellationToken);
+        return rows.ToDictionary(row => row.Id, row => (row.SessionCode, row.Count));
     }
 
     public async Task<PagedResult<ReservationListItemResponse>> SearchByPropertyAsync(
@@ -2412,19 +2446,12 @@ public partial class ReservationService(
         {
             var sessionIds = rows.Where(row => row.BookingSessionId.HasValue)
                 .Select(row => row.BookingSessionId!.Value).Distinct().ToArray();
-            var sessions = dbContext.BookingSessions.AsNoTracking().Where(session => sessionIds.Contains(session.Id));
-            // Do not reveal even a membership count when an order contains rooms outside the actor's scope.
-            if (allowedPropertyIds is not null)
-                sessions = sessions.Where(session => allowedPropertyIds.Contains(session.PropertyId) && !session.Reservations.Any(reservation =>
-                    !allowedPropertyIds.Contains(reservation.PropertyId)));
-            var summaries = await sessions.Select(session => new
-                { session.Id, session.SessionCode, Count = session.Reservations.Count() })
-                .ToDictionaryAsync(session => session.Id, cancellationToken);
+            var summaries = await ReadAdminOrderSummariesAsync(sessionIds, allowedPropertyIds, cancellationToken);
             foreach (var row in rows)
             {
                 if (row.BookingSessionId is { } sessionId && summaries.TryGetValue(sessionId, out var summary))
                 {
-                    row.BookingSessionCode = summary.SessionCode;
+                    row.BookingSessionCode = summary.Code;
                     row.LinkedReservationCount = summary.Count;
                 }
             }

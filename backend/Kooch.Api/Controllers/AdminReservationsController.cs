@@ -70,6 +70,7 @@ public class AdminReservationsController(
     {
         var response = await reservationService.GetByIdAsync(id, cancellationToken: cancellationToken);
         await EnsurePropertyPermissionAsync(response.PropertyId, "bookings.view", cancellationToken);
+        await reservationService.ApplyAdminOrderSummaryAsync(response, GetCurrentUser(), cancellationToken);
         response.CancellationRequest = await cancellationRequestService.GetLatestForAdminAsync(id, cancellationToken);
         if (await permissionService.HasPermissionAsync(
                 GetCurrentUser().UserId, PermissionKey.ManagePayments, cancellationToken: cancellationToken))
