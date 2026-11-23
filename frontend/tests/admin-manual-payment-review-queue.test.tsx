@@ -14,10 +14,14 @@ describe("pending manual receipt queue", () => {
   beforeEach(() => { vi.clearAllMocks(); mocks.request.mockResolvedValue(response()); });
   it("renders authoritative dates, references, currency and financial-tab navigation with list context", async () => {
     render(<ManualPaymentReviewQueue propertyId={3} returnTo="/admin/reservations?propertyId=3&page=4" />);
-    const link = await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    const link = await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     const url = new URL(link.getAttribute("href")!, "https://test.invalid");
     expect(url.pathname).toBe("/admin/reservations/37"); expect(url.searchParams.get("tab")).toBe("financial");
     expect(url.searchParams.get("returnTo")).toBe("/admin/reservations?propertyId=3&page=4");
+    const disclosure = screen.getByText("اطلاعات بیشتر", { selector: "summary" }).closest("details")!;
+    expect(disclosure.open).toBe(false);
+    fireEvent.click(screen.getByText("اطلاعات بیشتر", { selector: "summary" }));
+    expect(disclosure.open).toBe(true);
     expect(screen.getByText("O-12")).toBeTruthy(); expect(screen.getByText(/۵٬۰۰۰٬۰۰۰ ریال/)).toBeTruthy();
     for (const label of ["زمان ثبت رسید", "مهلت اصلی پرداخت", "پایان حفاظت بررسی", "وضعیت رزرو"]) expect(screen.getByText(label)).toBeTruthy();
     expect(mocks.request).toHaveBeenCalledWith("/admin/manual-payments/pending?page=1&pageSize=20&propertyId=3", expect.objectContaining({ signal: expect.any(AbortSignal) }));
@@ -34,14 +38,14 @@ describe("pending manual receipt queue", () => {
   it("paginates on the server without fetching every page and refreshes after review invalidation", async () => {
     mocks.request.mockImplementation(async (path: string) => response([receipt], path.includes("page=2") ? 2 : 1));
     const view = render(<ManualPaymentReviewQueue refreshKey={0} />);
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     expect(mocks.request).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
     await waitFor(() => expect(mocks.request).toHaveBeenLastCalledWith("/admin/manual-payments/pending?page=2&pageSize=20", expect.anything()));
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     view.rerender(<ManualPaymentReviewQueue refreshKey={1} />);
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     expect((screen.getByRole("button", { name: "بعدی" }) as HTMLButtonElement).disabled).toBe(true);
   });
   it("keeps loading, failed endpoint and empty history distinct and supports retry", async () => {
@@ -57,18 +61,18 @@ describe("pending manual receipt queue", () => {
     let total = 21;
     mocks.request.mockImplementation(async (path: string) => response(path.includes("page=2") && total === 20 ? [] : [receipt], path.includes("page=2") ? 2 : 1, total));
     const view = render(<ManualPaymentReviewQueue refreshKey={0} />);
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     total = 20;
     view.rerender(<ManualPaymentReviewQueue refreshKey={1} />);
     await waitFor(() => expect(mocks.request).toHaveBeenLastCalledWith("/admin/manual-payments/pending?page=1&pageSize=20", expect.anything()));
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     expect(screen.queryByText("رسیدی در انتظار بررسی نیست.")).toBeNull();
   });
   it("refreshes on returning focus after review in a separate tab", async () => {
     render(<ManualPaymentReviewQueue />);
-    await screen.findByRole("link", { name: "بررسی رسید R-37" });
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     fireEvent.focus(window);
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
   });

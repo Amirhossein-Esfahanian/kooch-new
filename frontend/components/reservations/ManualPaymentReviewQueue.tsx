@@ -11,6 +11,7 @@ import { formatDateTime, statusLabels } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { reservationFinancialHref } from "./admin-reservation-navigation";
+import styles from "./ManualPaymentReviewQueue.module.css";
 
 export type ManualPaymentReviewItem = {
   paymentId: number; reservationId: number; reservationNumber: string; orderCode: string | null;
@@ -75,32 +76,38 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
         : error ? <KoochAlert className="mt-3" title="صف بررسی در دسترس نیست" variant="destructive">
           <p>{error}</p><KoochButton size="sm" className="mt-2" variant="outline" onClick={() => setRetry(value => value + 1)}>تلاش دوباره</KoochButton>
         </KoochAlert> : data && !summaryOnly ? <>
-          <p className="mt-2 text-xs text-muted-foreground">موارد نیازمند پیگیری مالی، سپس نزدیک‌ترین پایان حفاظت. نمایش در این صف به معنی تأیید پرداخت یا تمدید مهلت نیست.</p>
           {data.items.length === 0 ? <p role="status" className="mt-3 text-sm text-muted-foreground">رسیدی در انتظار بررسی نیست.</p>
-            : <ul className="mt-3 divide-y divide-border">{data.items.map(item => <li key={item.paymentId} className="grid min-w-0 gap-3 py-3 sm:grid-cols-[minmax(0,1fr)_auto]">
-              <div className="grid min-w-0 gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold text-foreground" dir="ltr">{item.reservationNumber}</span>
-                  {item.orderCode && <span className="text-xs text-muted-foreground">سفارش <bdi>{item.orderCode}</bdi></span>}
+            : <ul className={styles.list}>{data.items.map(item => <li key={item.paymentId} className={styles.row}>
+              <div className={styles.main}>
+                <div className={styles.identity}>
+                  <bdi className="font-semibold text-foreground">{item.reservationNumber}</bdi>
+                  <span className="break-words text-sm text-foreground">{item.guestName || "نام مهمان ثبت نشده"}</span>
+                </div>
+                <strong className={styles.amount}>{formatCurrency(item.amount, { currencyLabel: item.currency === "IRR" ? "ریال" : item.currency })}</strong>
+                <div className={styles.urgency}>
                   <KoochBadge variant={states[item.reviewState].variant}>{states[item.reviewState].label}</KoochBadge>
                 </div>
-                <p className="break-words text-sm text-foreground">{item.guestName || "نام مهمان ثبت نشده"} · {item.propertyName}</p>
-                <p className="text-sm font-semibold text-foreground">{formatCurrency(item.amount, { currencyLabel: item.currency === "IRR" ? "ریال" : item.currency })} · {methods[item.method] ?? item.method}</p>
-                <dl className="grid gap-x-4 gap-y-1 text-xs sm:grid-cols-2 xl:grid-cols-4">{[
+                <Link className={styles.review} aria-label={`بررسی پرداخت ${item.reservationNumber}`}
+                  href={reservationFinancialHref(item.reservationId, returnTo)}>بررسی پرداخت</Link>
+              </div>
+              <details className={styles.details}>
+                <summary>اطلاعات بیشتر<span className="sr-only"> برای رسید {item.reservationNumber}</span></summary>
+                <dl className={styles.metadata}>{[
+                  ["اقامتگاه", item.propertyName], ["روش پرداخت", methods[item.method] ?? item.method],
+                  ...(item.orderCode ? [["سفارش", item.orderCode]] : []),
                   ["زمان ثبت رسید", item.createdAtUtc ? formatDateTime(item.createdAtUtc) : "نامشخص"],
                   ["مهلت اصلی پرداخت", item.paymentExpiresAtUtc ? formatDateTime(item.paymentExpiresAtUtc) : "نامشخص"],
                   ["پایان حفاظت بررسی", item.reviewProtectionExpiresAtUtc ? formatDateTime(item.reviewProtectionExpiresAtUtc) : "فاقد حفاظت معتبر"],
                   ["وضعیت رزرو", statusLabels[item.reservationStatus] ?? (item.reservationStatus === "CapacityLost" ? "ظرفیت از دست رفته" : item.reservationStatus)],
-                ].map(([label, value]) => <div key={label}><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 text-foreground">{value}</dd></div>)}</dl>
-              </div>
-              <Link className="inline-flex min-h-11 items-center justify-center self-center rounded-lg border border-border px-3 text-sm font-semibold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                href={reservationFinancialHref(item.reservationId, returnTo)}>بررسی رسید {item.reservationNumber}</Link>
+                ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd><bdi>{value}</bdi></dd></div>)}</dl>
+                <p className={styles.caption}>موارد نیازمند پیگیری مالی، سپس نزدیک‌ترین پایان حفاظت. نمایش در این صف به معنی تأیید پرداخت یا تمدید مهلت نیست.</p>
+              </details>
             </li>)}</ul>}
-          <nav aria-label="صفحه‌بندی صف بررسی" className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3 text-sm">
+          {data.totalPages > 1 && <nav aria-label="صفحه‌بندی صف بررسی" className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-xs">
             <span>صفحه {toPersianDigits(data.page)} · {toPersianDigits(data.totalCount)} رسید</span>
             <div className="flex gap-2"><KoochButton size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>قبلی</KoochButton>
               <KoochButton size="sm" variant="outline" disabled={page >= data.totalPages} onClick={() => setPage(value => value + 1)}>بعدی</KoochButton></div>
-          </nav>
+          </nav>}
         </> : null}
     </KoochCard>
   </section>;

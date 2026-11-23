@@ -2037,8 +2037,6 @@ export function ReservationDetailsDialog({
                     }}
                   />
                 ) : null;
-  const actionableDeadline = shouldShowPaymentCountdown && Boolean(reservation?.paymentExpiresAtUtc) &&
-    !reservation?.isPaymentExpired && remainingPaymentSeconds !== 0 && (canRegisterPayment || canSendPaymentLink);
 
   const sections = reservation ? {
     request: <>            {reservation.cancellationRequest && (
@@ -2310,7 +2308,7 @@ export function ReservationDetailsDialog({
 
 </>,
     payments: <>            {(onCreateManualPayment || manualPayments.length > 0 || manualPaymentsLoading) && (
-              <KoochCard className="grid gap-3" padding="sm" variant="elevated">
+              <KoochCard className={presentation === "page" ? "grid gap-2" : "grid gap-3"} padding="sm" variant={presentation === "page" ? "default" : "elevated"}>
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-foreground">پرداخت‌های دستی</h3>
                   {(presentation === "dialog" || primaryKind !== "manual") && manualPaymentAction}
@@ -2320,13 +2318,13 @@ export function ReservationDetailsDialog({
                 ) : manualPayments.length === 0 ? (
                   <p className="text-sm text-muted-foreground">پرداخت دستی برای این رزرو ثبت نشده است.</p>
                 ) : (
-                  <div className="grid gap-3">
+                  <div className={presentation === "page" ? "grid gap-2" : "grid gap-3"}>
                     {manualPayments.map((payment) => {
                       const isPending = payment.verificationStatus === "PendingVerification";
                       const actor = payment.submittedBy ??
                         (payment.submittedByUserId ? `کاربر ${toPersianDigits(payment.submittedByUserId)}` : "-");
                       const paymentActions = isPending && (onApproveManualPayment || onRejectManualPayment) && (
-                            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                            <div className={presentation === "page" ? "flex flex-wrap gap-2" : "flex flex-wrap gap-2 border-t border-border pt-3"}>
                               {onApproveManualPayment && (
                                 <KoochButton
                                   disabled={manualPaymentMutationId !== null}
@@ -2350,6 +2348,7 @@ export function ReservationDetailsDialog({
                           );
                       if (presentation === "page") return <ReservationPaymentRow key={payment.paymentId}
                         payment={payment} methodLabel={manualPaymentMethodLabels[payment.method]}
+                        deadlineLabel={isPending && !shouldShowPaymentCountdown && reservation.paymentExpiresAtUtc ? formatDateTime(reservation.paymentExpiresAtUtc) : undefined}
                         statusLabel={manualPaymentStatusLabels[payment.status]}
                         verificationLabel={manualPaymentVerificationLabels[payment.verificationStatus]}
                         dateLabel={`${formatDate(payment.paymentDate)}${payment.paymentTime ? ` - ${toPersianDigits(payment.paymentTime.slice(0, 5))}` : ""}`}
@@ -2591,23 +2590,22 @@ export function ReservationDetailsDialog({
                 <div className={detailsStyles.sectionActions}>{editAction}{voucherAction}</div>
                 {sections?.request}{sections?.info}
               </section>
-              <section className={detailsStyles.panel} role="tabpanel" id={`${tabsId}-financial-panel`}
+              <section className={detailsStyles.panel} data-reservation-financial role="tabpanel" id={`${tabsId}-financial-panel`}
                 aria-labelledby={`${tabsId}-financial-tab`} hidden={activeTab !== "financial"} tabIndex={0}>
                 <ReservationFinancialSummary reservation={reservation} currencyLabel={currencyLabel}
                   collectible={(canRegisterPayment || canSendPaymentLink) && remainingPaymentSeconds !== 0} refundAction={refundAction} />
-                {actionableDeadline && sections?.deadline}
                 <div className={detailsStyles.sectionActions}>
                   {orderAction}{primaryKind !== "link" && linkAction}
                   {statusActions.filter(status => status !== "Cancelled" && !(primaryKind === "status" && status === primaryStatus)).map(transitionAction)}
                 </div>
-                {canRegisterPayment && <p className="text-sm text-muted-foreground">دریافت تک‌رزرو فقط برای <bdi>{reservation.reservationNumber}</bdi> است؛ ماندهٔ این رزرو: {typeof reservation.remainingAmount === "number" ? formatCurrency(reservation.remainingAmount, { currencyLabel }) : "نامشخص"}. رسید پس از ثبت، نیازمند بررسی است.</p>}
+                {canRegisterPayment && <p className="text-xs text-muted-foreground">دریافت تک‌رزرو فقط برای <bdi>{reservation.reservationNumber}</bdi> است؛ رسید پس از ثبت، نیازمند بررسی است.</p>}
                 {orderBalance && !orderBalance.canSettle && <KoochAlert title={`دریافت کل ماندهٔ سفارش ${orderBalance.sessionCode} در دسترس نیست`}>{orderBalance.unavailableReason || "علت در پاسخ سرور مشخص نشده است."}</KoochAlert>}
                 {sections?.payments}
                 <ReservationFinancialDetails>
                   <ReservationPricingBreakdown reservation={reservation} currencyLabel={currencyLabel}
                     action={priceAdjustmentAction} editor={priceAdjustmentEditor} />
                   {sections?.refund}
-                  {!actionableDeadline && reservation.paymentExpiresAtUtc && sections?.deadline}
+                  {!shouldShowPaymentCountdown && reservation.paymentExpiresAtUtc && sections?.deadline}
                 </ReservationFinancialDetails>
               </section>
               <section className={detailsStyles.panel} role="tabpanel" id={`${tabsId}-activity-panel`}

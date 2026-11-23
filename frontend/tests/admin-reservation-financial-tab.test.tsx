@@ -50,7 +50,9 @@ describe("dedicated Admin financial presentation", () => {
     expect(amount(summary, "وجه دریافت‌شده")).toBe("۴۰۰ ریال");
     expect(amount(summary, "ماندهٔ قابل وصول")).toBe("۶۰۰ ریال");
     expect(screen.getAllByRole("button", { name: "ثبت دریافت برای این رزرو" })).toHaveLength(1);
-    expect(screen.getByRole("heading", { name: "مهلت پرداخت" })).toBeTruthy();
+    const headerPayment = screen.getByRole("region", { name: "اطلاعات پرداخت رزرو" });
+    expect(within(headerPayment).getByText("مهلت پرداخت:")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "مهلت پرداخت" })).toBeNull();
     expect(screen.getByText("ریز محاسبات رزرو و لغو", { selector: "summary" }).closest("details")?.open).toBe(false);
   });
 
@@ -161,7 +163,10 @@ describe("dedicated Admin financial presentation", () => {
   it("keeps approval behind the existing confirmation and hides write actions without handlers", async () => {
     const approve = vi.fn().mockResolvedValue(undefined);
     show({ onApproveManualPayment: approve, manualPayments: [{ ...payment, status: "Pending", verificationStatus: "PendingVerification" }] });
-    fireEvent.click(screen.getByRole("button", { name: "تأیید پرداخت" }));
+    const row = screen.getByRole("article", { name: "پرداخت ۷" });
+    expect(within(row).getByText("در انتظار بررسی", { selector: "span" }).closest("details")).toBeNull();
+    const actions = within(row).getByRole("group", { name: "بررسی پرداخت ۷" });
+    fireEvent.click(within(actions).getByRole("button", { name: "تأیید پرداخت" }));
     expect(approve).not.toHaveBeenCalled();
     const dialog = await screen.findByRole("alertdialog", { name: "تأیید پرداخت دستی" });
     fireEvent.click(within(dialog).getByRole("button", { name: "تأیید پرداخت" }));

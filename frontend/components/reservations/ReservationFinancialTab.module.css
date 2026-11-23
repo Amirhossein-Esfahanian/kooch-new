@@ -1,7 +1,7 @@
-.summary { display: grid; gap: .875rem; }
+.summary { display: grid; gap: .5rem; }
 .summary h3, .sectionHeading h3 { font-size: .875rem; font-weight: 600; }
-.amounts { display: flex; flex-wrap: wrap; gap: .75rem 2rem; }
-.amounts > div { display: grid; gap: .375rem; min-width: 0; }
+.amounts { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; }
+.amounts > div { display: grid; gap: .25rem; min-width: 0; }
 .amounts dt, .caption, .paymentMetadata dt, .calculationValues dt { color: var(--muted-foreground); font-size: .75rem; }
 .amounts dd { font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .unknown { color: var(--muted-foreground); font-size: .8125rem; font-weight: 400; }
@@ -10,26 +10,31 @@
 .caption { line-height: 1.8; }
 .breakdown { min-width: 0; border: 1px solid var(--border); border-radius: .5rem; background: var(--card); }
 .breakdown > summary { min-height: 2.75rem; padding: .75rem; font-size: .875rem; font-weight: 600; cursor: pointer; }
-.breakdownBody { display: grid; min-width: 0; gap: 1rem; padding: .75rem; border-block-start: 1px solid var(--border); }
+.breakdownBody { display: grid; min-width: 0; gap: .75rem; padding: .75rem; border-block-start: 1px solid var(--border); }
 .calculations { display: grid; min-width: 0; gap: .75rem; }
 .sectionHeading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
 .calculationValues { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .625rem 1.5rem; }
 .calculationValues > div { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .375rem; }
 .calculationValues dd { font-size: .8125rem; font-variant-numeric: tabular-nums; }
-.paymentRow { display: grid; gap: .5rem; min-width: 0; padding-block: .75rem; border-block-end: 1px solid var(--border); font-size: .8125rem; }
+.paymentRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .25rem .75rem; min-width: 0; padding-block: .625rem; border-block-end: 1px solid var(--border); font-size: .8125rem; }
 .paymentRow:last-child { border-block-end: 0; padding-block-end: 0; }
 .paymentRow:first-child { padding-block-start: 0; }
-.paymentTop { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem 1rem; }
+.paymentRow[data-review-pending] { padding: .625rem; border: 1px solid var(--border); border-radius: .5rem; background: color-mix(in srgb, var(--primary) 4%, var(--card)); }
+.paymentTop { display: flex; min-width: 0; align-items: center; flex-wrap: wrap; gap: .375rem .75rem; }
 .paymentTop strong { font-size: .875rem; font-variant-numeric: tabular-nums; }
 .paymentTop bdi { overflow-wrap: anywhere; }
-.paymentDetails > summary { display: list-item; width: fit-content; min-height: 2.75rem; padding-block: .625rem; color: var(--primary); cursor: pointer; }
+.paymentDetails { grid-column: 1 / -1; }
+.paymentDetails > summary { display: list-item; width: fit-content; min-height: 2rem; padding-block: .375rem; color: var(--primary); cursor: pointer; }
 .paymentMetadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding-block: .5rem; }
 .paymentMetadata > div { display: grid; align-content: start; gap: .25rem; min-width: 0; }
 .paymentMetadata dd { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.8; }
-.paymentActions { display: flex; flex-wrap: wrap; gap: .5rem; }
+.paymentActions { display: flex; flex-wrap: wrap; gap: .5rem; grid-column: 2; grid-row: 1; }
 .paymentDetails > summary:focus-visible, .breakdown > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: .25rem; }
 @media (max-width: 639px) {
   .calculationValues, .paymentMetadata { grid-template-columns: 1fr; }
   .amounts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
   .paymentTop { gap: .5rem .75rem; }
+  .paymentRow { grid-template-columns: minmax(0, 1fr); }
+  .paymentActions { grid-column: 1; grid-row: auto; }
 }
+@media (hover: none) { .paymentDetails > summary { min-height: 2.75rem; } }

@@ -83,20 +83,23 @@ export function ReservationPricingBreakdown({ reservation, currencyLabel, action
   </section>;
 }
 
-export function ReservationPaymentRow({ payment, methodLabel, statusLabel, verificationLabel, dateLabel, metadata, actions }: {
+export function ReservationPaymentRow({ payment, methodLabel, statusLabel, verificationLabel, dateLabel, metadata, actions, deadlineLabel }: {
   payment: AdminManualPayment; methodLabel: string; statusLabel: string; verificationLabel: string;
-  dateLabel: string; metadata: Array<[string, string | null | undefined]>; actions: ReactNode;
+  dateLabel: string; metadata: Array<[string, string | null | undefined]>; actions: ReactNode; deadlineLabel?: string;
 }) {
   const currencyLabel = payment.currency === "IRR" ? "ریال" : payment.currency || "واحد نامشخص";
-  return <article className={styles.paymentRow} aria-label={`پرداخت ${toPersianDigits(payment.paymentId)}`}>
+  const pendingReview = payment.verificationStatus === "PendingVerification";
+  return <article className={styles.paymentRow} data-review-pending={pendingReview || undefined} aria-label={`پرداخت ${toPersianDigits(payment.paymentId)}`}>
     <div className={styles.paymentTop}>
       <strong>{money(payment.amount, currencyLabel)}</strong>
       <span>{methodLabel}</span><span>{dateLabel}</span>
-      <KoochBadge variant={payment.status === "Successful" ? "success" : payment.status === "Failed" ? "destructive" : "muted"}>
-        <span className="sr-only">وضعیت تراکنش: </span>{statusLabel}
+      <KoochBadge variant={pendingReview ? "default" : payment.status === "Successful" ? "success" : payment.status === "Failed" ? "destructive" : "muted"}>
+        <span className="sr-only">{pendingReview ? "وضعیت بررسی: " : "وضعیت تراکنش: "}</span>{pendingReview ? verificationLabel : statusLabel}
       </KoochBadge>
       {payment.referenceNumber?.trim() && <span>شماره پیگیری: <bdi>{payment.referenceNumber}</bdi></span>}
+      {deadlineLabel && <span>مهلت اصلی پرداخت: {deadlineLabel}</span>}
     </div>
+    {actions && <div className={styles.paymentActions} role="group" aria-label={`بررسی پرداخت ${toPersianDigits(payment.paymentId)}`}>{actions}</div>}
     <details className={styles.paymentDetails}>
       <summary>جزئیات پرداخت</summary>
       <dl className={styles.paymentMetadata}>
@@ -106,6 +109,5 @@ export function ReservationPaymentRow({ payment, methodLabel, statusLabel, verif
           <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}
       </dl>
     </details>
-    {actions && <div className={styles.paymentActions}>{actions}</div>}
   </article>;
 }

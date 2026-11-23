@@ -1,0 +1,32 @@
+.list { margin-block-start: .5rem; }
+.row { min-width: 0; padding-block: .5rem; }
+.row + .row { border-block-start: 1px solid var(--border); }
+.row:last-child { padding-block-end: 0; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: .375rem .75rem; }
+.identity { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .75rem; min-width: 0; }
+.amount { font-size: .8125rem; font-variant-numeric: tabular-nums; color: var(--foreground); overflow-wrap: anywhere; }
+.urgency { min-width: 0; }
+.urgency > span { max-width: 100%; justify-content: flex-start; padding: .25rem .5rem; text-align: start; overflow-wrap: anywhere; }
+.review { display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; padding-inline: .75rem; border: 1px solid var(--border); border-radius: .5rem; color: var(--primary); font-size: .8125rem; font-weight: 600; white-space: nowrap; }
+.review:hover { background: var(--muted); }
+.details > summary { width: fit-content; min-height: 2rem; padding-block: .375rem; font-size: .75rem; color: var(--muted-foreground); cursor: pointer; }
+.details > summary:hover { color: var(--foreground); }
+.review:focus-visible, .details > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+.metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1rem; padding-block: .5rem; font-size: .75rem; }
+.metadata > div { min-width: 0; }
+.metadata dt, .caption { color: var(--muted-foreground); }
+.metadata dd { margin-block-start: .125rem; color: var(--foreground); overflow-wrap: anywhere; }
+.caption { font-size: .75rem; line-height: 1.8; }
+@media (min-width: 1024px) {
+  .main { grid-template-columns: minmax(0, 1.3fr) minmax(0, .7fr) minmax(0, 1fr) auto; }
+  .review { min-height: 2rem; }
+  .metadata { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 479px) {
+  .identity, .urgency { grid-column: 1; }
+  .amount { text-align: end; }
+  .metadata { grid-template-columns: 1fr; }
+}
+@media (hover: none) {
+  .review, .details > summary { min-height: 2.75rem; }
+}
