@@ -1334,12 +1334,16 @@ public partial class ReservationService(
         }
 
         var now = DateTime.UtcNow;
+        var reviewCutoff = now.AddHours(-24);
+        var pendingReceipts = ManualPaymentReviewProtection.PendingReceipts(dbContext);
         var reservationIds = await dbContext.Reservations.AsNoTracking()
             .Where(reservation =>
                 reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
                 reservation.PaymentExpiresAtUtc.HasValue &&
                 reservation.PaymentExpiresAtUtc.Value <= now &&
                 !reservation.PaidAtUtc.HasValue &&
+                (reservation.PaymentExpiresAtUtc <= reviewCutoff || !pendingReceipts.Any(payment =>
+                    payment.ReservationId == reservation.Id && payment.CreatedAtUtc < reservation.PaymentExpiresAtUtc)) &&
                 (reservation.Payments
                     .Where(payment => payment.Status == PaymentStatus.Successful)
                     .Sum(payment => (decimal?)payment.Amount) ?? 0) < reservation.FinalAmount)
@@ -1366,22 +1370,25 @@ public partial class ReservationService(
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var relatedPaymentIds = await GetRelatedPaymentIdsAsync(
-            reservationId,
-            cancellationToken);
+        var target = await ManualPaymentReviewProtection.ReadTargetAsync(dbContext, reservationId, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
-        await BookingFundingLock.ForReservationAsync(dbContext, reservationId, cancellationToken);
+        await ManualPaymentReviewProtection.LockAsync(dbContext, target, cancellationToken);
+        var relatedPaymentIds = await GetRelatedPaymentIdsAsync(reservationId, cancellationToken);
         var hasSuccessfulPayment = await LockPaymentsAsync(
             relatedPaymentIds,
             cancellationToken);
         var reservation = await LoadLockedReservationAsync(reservationId, cancellationToken);
+        await dbContext.Entry(reservation).ReloadAsync(cancellationToken);
+        ManualPaymentReviewProtection.EnsureTarget(reservation, target);
+        now = DateTime.UtcNow;
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment ||
             reservation.PaymentExpiresAtUtc is null ||
             reservation.PaymentExpiresAtUtc > now ||
             reservation.PaidAtUtc.HasValue ||
-            hasSuccessfulPayment)
+            hasSuccessfulPayment ||
+            await ManualPaymentReviewProtection.HasProtectionAsync(dbContext, reservation, now, cancellationToken))
         {
             return false;
         }
@@ -1451,6 +1458,7 @@ public partial class ReservationService(
                     cancellationToken);
             }
 
+            await dbContext.Entry(payment).ReloadAsync(cancellationToken);
             hasSuccessfulPayment |= payment.Status == PaymentStatus.Successful;
         }
 

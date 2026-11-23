@@ -36,14 +36,10 @@ public sealed partial class AdminManualPaymentService(
 
     public async Task<IReadOnlyList<AdminManualPaymentDetailsResponse>> GetByReservationAsync(
         int reservationId,
+        int actorUserId,
         CancellationToken cancellationToken = default)
     {
-        if (reservationId <= 0 ||
-            !await dbContext.Reservations.AsNoTracking()
-                .AnyAsync(reservation => reservation.Id == reservationId, cancellationToken))
-        {
-            throw new KeyNotFoundException("Reservation not found.");
-        }
+        await EnsureReceiptReservationAccessAsync(reservationId, actorUserId, cancellationToken);
 
         return await dbContext.Payments.AsNoTracking()
             .Where(payment =>
@@ -97,11 +93,16 @@ public sealed partial class AdminManualPaymentService(
         CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeCreateRequest(request);
+        await EnsureReceiptReservationAccessAsync(normalized.ReservationId, actorUserId, cancellationToken);
+        var target = await ManualPaymentReviewProtection.ReadTargetAsync(dbContext, normalized.ReservationId, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
 
+        await ManualPaymentReviewProtection.LockAsync(dbContext, target, cancellationToken);
         var reservation = await LockReservationAsync(normalized.ReservationId, cancellationToken);
+        ManualPaymentReviewProtection.EnsureTarget(reservation, target);
+        await EnsureReceivedPaymentAccessAsync(actorUserId, reservation.PropertyId, cancellationToken);
         EnsureDirectReservationCanAcceptPayment(reservation, normalized.Currency, DateTime.UtcNow);
         await EnsurePaymentCoversBalanceAsync(
             reservation,
@@ -137,6 +138,8 @@ public sealed partial class AdminManualPaymentService(
 
         dbContext.Payments.Add(payment);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (reservation.PaymentExpiresAtUtc is not { } deadline || payment.CreatedAtUtc >= deadline)
+            throw new ManualPaymentReviewException("مهلت ثبت رسید پرداخت پایان یافته است.", ManualPaymentReviewException.DeadlineExpired);
         await transaction.CommitAsync(cancellationToken);
 
         return ToResponse(payment, payment.ManualDetails, reservation, capacityClaimed: false);
@@ -147,24 +150,25 @@ public sealed partial class AdminManualPaymentService(
         int actorUserId,
         CancellationToken cancellationToken = default)
     {
+        var reservationId = await ReceiptReservationIdAsync(paymentId, actorUserId, cancellationToken);
+        var target = await ManualPaymentReviewProtection.ReadTargetAsync(dbContext, reservationId, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
 
+        await ManualPaymentReviewProtection.LockAsync(dbContext, target, cancellationToken);
         var payment = await LockPaymentAsync(paymentId, cancellationToken);
         var details = await LockManualDetailsAsync(paymentId, cancellationToken);
         EnsurePendingVerification(payment, details);
 
-        var reservationId = payment.ReservationId
-            ?? throw new InvalidOperationException("Manual payment must target a direct reservation.");
-        var roomTypeId = await dbContext.Reservations.AsNoTracking()
-            .Where(reservation => reservation.Id == reservationId)
-            .Select(reservation => (int?)reservation.RoomTypeId)
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Reservation not found.");
-        await LockRoomTypeAsync(roomTypeId, cancellationToken);
+        if (payment.ReservationId != reservationId) throw new InvalidOperationException("Payment reservation changed.");
+        var roomTypeId = target.RoomTypeId;
         var reservation = await LockReservationAsync(reservationId, cancellationToken);
-        EnsureDirectReservationCanAcceptPayment(reservation, payment.Currency, DateTime.UtcNow);
+        ManualPaymentReviewProtection.EnsureTarget(reservation, target);
+        await EnsureReceivedPaymentAccessAsync(actorUserId, reservation.PropertyId, cancellationToken);
+        var reviewNow = DateTime.UtcNow;
+        EnsureDirectReservationCanAcceptPayment(reservation, payment.Currency, reviewNow,
+            ManualPaymentReviewProtection.Protects(reservation, payment, details, reviewNow));
         await EnsurePaymentCoversBalanceAsync(
             reservation,
             payment.Amount,
@@ -183,6 +187,8 @@ public sealed partial class AdminManualPaymentService(
                               !roomAvailability.ClaimedRoomIds.Contains(reservation.RoomId.Value));
 
         var now = DateTime.UtcNow;
+        EnsureDirectReservationCanAcceptPayment(reservation, payment.Currency, now,
+            ManualPaymentReviewProtection.Protects(reservation, payment, details, now));
         if (capacityExists)
         {
             await paymentFinancializationService.ApplyAsync(
@@ -244,16 +250,20 @@ public sealed partial class AdminManualPaymentService(
         CancellationToken cancellationToken = default)
     {
         var reason = NormalizeRequired(request.Reason, RejectionReasonMaxLength, "Rejection reason");
+        var reservationId = await ReceiptReservationIdAsync(paymentId, actorUserId, cancellationToken);
+        var target = await ManualPaymentReviewProtection.ReadTargetAsync(dbContext, reservationId, cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
 
+        await ManualPaymentReviewProtection.LockAsync(dbContext, target, cancellationToken);
         var payment = await LockPaymentAsync(paymentId, cancellationToken);
         var details = await LockManualDetailsAsync(paymentId, cancellationToken);
         EnsurePendingVerification(payment, details);
-        var reservationId = payment.ReservationId
-            ?? throw new InvalidOperationException("Manual payment must target a direct reservation.");
+        if (payment.ReservationId != reservationId) throw new InvalidOperationException("Payment reservation changed.");
         var reservation = await LockReservationAsync(reservationId, cancellationToken);
+        ManualPaymentReviewProtection.EnsureTarget(reservation, target);
+        await EnsureReceivedPaymentAccessAsync(actorUserId, reservation.PropertyId, cancellationToken);
 
         var now = DateTime.UtcNow;
         details.VerificationStatus = ManualPaymentVerificationStatus.Rejected;
@@ -270,6 +280,23 @@ public sealed partial class AdminManualPaymentService(
         return ToResponse(payment, details, reservation, capacityClaimed: false);
     }
 
+    private async Task EnsureReceiptReservationAccessAsync(int id, int actorUserId, CancellationToken ct)
+    {
+        var propertyId = await dbContext.Reservations.AsNoTracking().Where(row => row.Id == id)
+            .Select(row => (int?)row.PropertyId).SingleOrDefaultAsync(ct)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+        await EnsureReceivedPaymentAccessAsync(actorUserId, propertyId, ct);
+    }
+
+    private async Task<int> ReceiptReservationIdAsync(int paymentId, int actorUserId, CancellationToken ct)
+    {
+        var id = await dbContext.Payments.AsNoTracking().Where(row => row.Id == paymentId)
+            .Select(row => row.ReservationId).SingleOrDefaultAsync(ct)
+            ?? throw new KeyNotFoundException("Direct manual payment not found.");
+        await EnsureReceiptReservationAccessAsync(id, actorUserId, ct);
+        return id;
+    }
+
     private async Task<Reservation> LockReservationAsync(
         int reservationId,
         CancellationToken cancellationToken)
@@ -278,8 +305,10 @@ public sealed partial class AdminManualPaymentService(
             ? dbContext.Reservations.FromSqlInterpolated(
                 $"SELECT * FROM Reservations WITH (UPDLOCK, HOLDLOCK) WHERE Id = {reservationId}")
             : dbContext.Reservations.Where(reservation => reservation.Id == reservationId);
-        return await query.SingleOrDefaultAsync(cancellationToken)
+        var reservation = await query.SingleOrDefaultAsync(cancellationToken)
                ?? throw new KeyNotFoundException("Reservation not found.");
+        await dbContext.Entry(reservation).ReloadAsync(cancellationToken);
+        return reservation;
     }
 
     private async Task<Payment> LockPaymentAsync(int paymentId, CancellationToken cancellationToken)
@@ -288,8 +317,10 @@ public sealed partial class AdminManualPaymentService(
             ? dbContext.Payments.FromSqlInterpolated(
                 $"SELECT * FROM Payments WITH (UPDLOCK, HOLDLOCK) WHERE Id = {paymentId}")
             : dbContext.Payments.Where(payment => payment.Id == paymentId);
-        return await query.SingleOrDefaultAsync(cancellationToken)
+        var payment = await query.SingleOrDefaultAsync(cancellationToken)
                ?? throw new KeyNotFoundException("Payment not found.");
+        await dbContext.Entry(payment).ReloadAsync(cancellationToken);
+        return payment;
     }
 
     private async Task<ManualPaymentDetails> LockManualDetailsAsync(
@@ -300,8 +331,10 @@ public sealed partial class AdminManualPaymentService(
             ? dbContext.ManualPaymentDetails.FromSqlInterpolated(
                 $"SELECT * FROM ManualPaymentDetails WITH (UPDLOCK, HOLDLOCK) WHERE PaymentId = {paymentId}")
             : dbContext.ManualPaymentDetails.Where(details => details.PaymentId == paymentId);
-        return await query.SingleOrDefaultAsync(cancellationToken)
+        var details = await query.SingleOrDefaultAsync(cancellationToken)
                ?? throw new InvalidOperationException("Manual payment details are missing.");
+        await dbContext.Entry(details).ReloadAsync(cancellationToken);
+        return details;
     }
 
     private async Task LockRoomTypeAsync(int roomTypeId, CancellationToken cancellationToken)
@@ -339,9 +372,18 @@ public sealed partial class AdminManualPaymentService(
     private static void EnsureDirectReservationCanAcceptPayment(
         Reservation reservation,
         string currency,
-        DateTime now)
+        DateTime now, bool protectedReview = false)
     {
         var blocker = GetDirectReservationPaymentBlocker(reservation, currency, now);
+        if (blocker == DirectReservationPaymentBlocker.ExpiredDeadline && protectedReview)
+        {
+            if (!string.Equals(reservation.Currency.Trim(), currency, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Payment currency does not match the reservation.");
+            return;
+        }
+        if (blocker is DirectReservationPaymentBlocker.MissingDeadline or DirectReservationPaymentBlocker.ExpiredDeadline ||
+            blocker == DirectReservationPaymentBlocker.StatusNotPayable && reservation.Status == ReservationStatus.PaymentExpired)
+            throw new ManualPaymentReviewException("مهلت پرداخت یا حفاظت بررسی رسید پایان یافته است؛ رسید برای پیگیری مالی باقی می‌ماند.", ManualPaymentReviewException.DeadlineExpired);
         if (blocker is not null)
             throw new InvalidOperationException(blocker switch
             {
@@ -382,7 +424,7 @@ public sealed partial class AdminManualPaymentService(
         if (payment.Status != PaymentStatus.Pending ||
             details.VerificationStatus != ManualPaymentVerificationStatus.PendingVerification)
         {
-            throw new InvalidOperationException("Manual payment verification is already finalized.");
+            throw new ManualPaymentReviewException("این رسید قبلاً بررسی شده است.", ManualPaymentReviewException.AlreadyReviewed);
         }
 
         if (payment.Amount <= 0 || !Enum.IsDefined(details.Method))

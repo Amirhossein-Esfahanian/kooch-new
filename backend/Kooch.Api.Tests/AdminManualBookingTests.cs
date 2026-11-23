@@ -126,7 +126,9 @@ public sealed partial class AdminManualBookingTests
         Assert.True(context.IsValid);
 
         var manual = new AdminManualPaymentService(h.DbContext, h.EffectiveAvailability,
-            new PaymentFinancializationService(h.DbContext, new CommissionPolicyResolver(h.DbContext)));
+            new PaymentFinancializationService(h.DbContext, new CommissionPolicyResolver(h.DbContext)),
+            new ReservationVoucherService(h.DbContext, new VoucherNumberGenerator(h.DbContext)),
+            new StubPermissionService(true), new StubPropertyAuthorizationService(true));
         var payment = await manual.CreateAsync(new AdminManualPaymentCreateRequest
         {
             ReservationId = first, Amount = approved.FinalAmount, Currency = "IRR",
@@ -219,7 +221,9 @@ public sealed partial class AdminManualBookingTests
         var link = await h.Service.GeneratePaymentLinkAsync(reservation.Id, h.SuperAdmin);
         Assert.Contains(reservation.ReservationNumber!, link.PaymentLink);
         var service = new AdminManualPaymentService(h.DbContext, h.EffectiveAvailability,
-            new PaymentFinancializationService(h.DbContext, new CommissionPolicyResolver(h.DbContext)));
+            new PaymentFinancializationService(h.DbContext, new CommissionPolicyResolver(h.DbContext)),
+            new ReservationVoucherService(h.DbContext, new VoucherNumberGenerator(h.DbContext)),
+            new StubPermissionService(true), new StubPropertyAuthorizationService(true));
         var payment = await service.CreateAsync(new AdminManualPaymentCreateRequest
         {
             ReservationId = reservation.Id, Amount = reservation.FinalAmount, Currency = "IRR",

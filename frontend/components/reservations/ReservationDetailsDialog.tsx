@@ -39,6 +39,8 @@ import detailsStyles from "./ReservationDetailsSurface.module.css";
 import { KoochTable, KoochTableHeader, KoochTableBody, KoochTableRow, KoochTableHead, KoochTableCell } from "@/components/KoochTable";
 
 interface ReservationDetailsDialogProps {
+  initialTab?: ReservationDetailsTab;
+  paymentLink?: { reservationId: number; paymentLink: string; expiresAtUtc: string } | null;
   presentation?: "dialog" | "page";
   showAdminActivities?: boolean;
   ownerActivityPropertyId?: number;
@@ -1694,6 +1696,8 @@ function ReservationActionGroup({ kind, children, presentation }: {
 }
 
 export function ReservationDetailsDialog({
+  initialTab = "reservation",
+  paymentLink,
   presentation = "dialog",
   showAdminActivities = false,
   ownerActivityPropertyId,
@@ -1722,8 +1726,11 @@ export function ReservationDetailsDialog({
   reservation,
 }: ReservationDetailsDialogProps) {
   const siteCurrencyLabel = useSiteCurrencyLabel();
-  const [activeTab, setActiveTab] = useState<ReservationDetailsTab>("reservation");
+  const [activeTab, setActiveTab] = useState<ReservationDetailsTab>(initialTab);
+  useEffect(() => { setActiveTab(initialTab); }, [initialTab, reservation?.id, reservation?.reservationId]);
   const tabsId = useId();
+  const [copyFeedback, setCopyFeedback] = useState<{ url: string; message: string } | null>(null);
+  const [copyingLink, setCopyingLink] = useState(false);
   const currencyLabel = reservation?.source === "AdminCreated" && reservation.currency
     ? reservation.currency === "IRR" ? "ریال" : reservation.currency
     : siteCurrencyLabel;
@@ -1820,6 +1827,32 @@ export function ReservationDetailsDialog({
     reservation?.remainingPaymentSeconds,
     reservation?.reservationId ?? reservation?.id,
   );
+  const linkRemainingSeconds = useReservationPaymentCountdown(
+    presentation === "page" && shouldShowPaymentCountdown && paymentLink?.reservationId === (reservation?.reservationId ?? reservation?.id),
+    paymentLink?.expiresAtUtc,
+  );
+  let usablePaymentUrl: string | null = null;
+  if (paymentLink && reservation && isUnpaidReservation(reservation) && paymentLink.reservationId === (reservation.reservationId ?? reservation.id) &&
+      !reservation?.isPaymentExpired && remainingPaymentSeconds !== null && remainingPaymentSeconds > 0 &&
+      linkRemainingSeconds !== null && linkRemainingSeconds > 0) {
+    try {
+      const localPath = paymentLink.paymentLink.startsWith("/") && !paymentLink.paymentLink.startsWith("//") && !paymentLink.paymentLink.includes("\\");
+      const url = new URL(localPath ? `https://relative.invalid${paymentLink.paymentLink}` : paymentLink.paymentLink);
+      if ((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password)
+        usablePaymentUrl = paymentLink.paymentLink;
+    } catch { /* An invalid URL is never offered for payment or copying. */ }
+  }
+  async function copyPaymentLink() {
+    if (!usablePaymentUrl || copyingLink) return;
+    const url = usablePaymentUrl;
+    setCopyingLink(true);
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyFeedback({ url, message: "لینک کپی شد." });
+    } catch {
+      setCopyFeedback({ url, message: "کپی انجام نشد؛ لینک را دستی کپی کنید." });
+    } finally { setCopyingLink(false); }
+  }
   const canSendPaymentLink =
     reservation !== null &&
     !isReadOnly &&
@@ -2462,6 +2495,17 @@ export function ReservationDetailsDialog({
                 <div><dt>دلیل لغو</dt><dd>{cancellationReasonLabels[reservation.cancellationReason] ?? reservation.cancellationReason}</dd></div>}
               {reservation.bookingSessionCode && <div><dt>سفارش</dt><dd><bdi>{toPersianDigits(reservation.bookingSessionCode)}</bdi></dd></div>}
             </dl>
+            {shouldShowPaymentCountdown && <section aria-label="اطلاعات پرداخت رزرو" className="grid min-w-0 gap-2 border-t border-border pt-2 text-xs">
+              <dl className="flex flex-wrap gap-x-5 gap-y-2">
+                <div className="flex flex-wrap gap-1"><dt className="text-muted-foreground">مهلت پرداخت:</dt><dd>{formatDateTime(reservation.paymentExpiresAtUtc)}</dd></div>
+                <div className="flex flex-wrap gap-1"><dt className="text-muted-foreground">زمان باقی‌مانده:</dt><dd>{reservation.isPaymentExpired || remainingPaymentSeconds === 0 ? "مهلت پرداخت تمام شده است." : formatDuration(remainingPaymentSeconds)}</dd></div>
+              </dl>
+              {usablePaymentUrl ? <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <a className="min-w-0 flex-1 break-all text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" dir="ltr" href={usablePaymentUrl}>{usablePaymentUrl}</a>
+                <KoochButton type="button" size="sm" variant="outline" loading={copyingLink} onClick={() => void copyPaymentLink()}>کپی لینک</KoochButton>
+                {copyFeedback?.url === usablePaymentUrl && <span role="status">{copyFeedback.message}</span>}
+              </div> : <p className="text-muted-foreground">{paymentLink ? "لینک پرداخت معتبر در دسترس نیست." : reservation.timeline?.some(event => event.type === "PaymentLinkCreated") ? "لینک پرداخت قبلی در اطلاعات فعلی در دسترس نیست." : "لینک پرداخت ایجاد نشده"}</p>}
+            </section>}
             {verifiedOrder && reservation.linkedReservationCount! > 1 && <p className="text-sm text-muted-foreground">
               این رزرو یکی از {toPersianDigits(reservation.linkedReservationCount!)} رزرو سفارش <bdi>{reservation.bookingSessionCode}</bdi> است
             </p>}

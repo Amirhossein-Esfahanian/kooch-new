@@ -4,7 +4,13 @@ using Kooch.Api.Data;
 using Kooch.Api.Dtos.Payments;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
+using Kooch.Api.Filters;
 using Kooch.Api.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Abstractions;
+using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
@@ -13,6 +19,25 @@ namespace Kooch.Api.Tests;
 
 public sealed class AdminManualPaymentServiceTests
 {
+    [Theory]
+    [InlineData(ManualPaymentReviewException.DeadlineExpired)]
+    [InlineData(ManualPaymentReviewException.AlreadyReviewed)]
+    public void ReviewErrors_ReturnDistinctConflictCodes(string code)
+    {
+        var context = new ExceptionContext(new ActionContext(new DefaultHttpContext(),
+            new RouteData(), new ActionDescriptor()), [])
+        {
+            Exception = new ManualPaymentReviewException("Review conflict", code)
+        };
+        new ApiExceptionFilter().OnException(context);
+        var result = Assert.IsType<ConflictObjectResult>(context.Result);
+        Assert.True(context.ExceptionHandled);
+        Assert.Equal(409, result.StatusCode);
+        var body = System.Text.Json.JsonSerializer.SerializeToElement(result.Value);
+        Assert.Equal(code, body.GetProperty("code").GetString());
+        Assert.Equal("Review conflict", body.GetProperty("message").GetString());
+    }
+
     [Fact]
     public async Task Create_PersistsPendingManualPaymentWithoutConfirmingReservation()
     {
@@ -113,7 +138,7 @@ public sealed class AdminManualPaymentServiceTests
         });
         await harness.Context.SaveChangesAsync();
 
-        var results = await harness.Service.GetByReservationAsync(created.ReservationId);
+        var results = await harness.Service.GetByReservationAsync(created.ReservationId, ManualPaymentHarness.AdminUserId);
 
         var payment = Assert.Single(results);
         Assert.Equal(created.PaymentId, payment.PaymentId);
@@ -217,10 +242,10 @@ public sealed class AdminManualPaymentServiceTests
             new AdminManualPaymentRejectRequest { Reason = "Rejected receipt" },
             ManualPaymentHarness.AdminUserId);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<ManualPaymentReviewException>(() =>
             harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId));
 
-        Assert.Contains("already finalized", error.Message);
+        Assert.Equal(ManualPaymentReviewException.AlreadyReviewed, error.Code);
         Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
         Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
     }
@@ -232,13 +257,13 @@ public sealed class AdminManualPaymentServiceTests
         var created = await harness.CreateManualPaymentAsync();
         await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
 
-        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<ManualPaymentReviewException>(() =>
             harness.Service.RejectAsync(
                 created.PaymentId,
                 new AdminManualPaymentRejectRequest { Reason = "Too late" },
                 ManualPaymentHarness.AdminUserId));
 
-        Assert.Contains("already finalized", error.Message);
+        Assert.Equal(ManualPaymentReviewException.AlreadyReviewed, error.Code);
         Assert.Equal(1, await harness.Context.ReservationFinancialSnapshots.CountAsync());
         Assert.Equal(1, await harness.Context.FinancialEntries.CountAsync());
         Assert.Equal(1, await harness.Context.ReservationVouchers.CountAsync());
@@ -251,8 +276,9 @@ public sealed class AdminManualPaymentServiceTests
         var created = await harness.CreateManualPaymentAsync();
         await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var error = await Assert.ThrowsAsync<ManualPaymentReviewException>(() =>
             harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId));
+        Assert.Equal(ManualPaymentReviewException.AlreadyReviewed, error.Code);
 
         Assert.Equal(1, await harness.Context.ReservationFinancialSnapshots.CountAsync());
         Assert.Equal(1, await harness.Context.FinancialEntries.CountAsync());
@@ -397,7 +423,9 @@ public sealed class AdminManualPaymentServiceTests
             Service = new AdminManualPaymentService(
                 context,
                 availability,
-                new PaymentFinancializationService(context, new CommissionPolicyResolver(context)));
+                new PaymentFinancializationService(context, new CommissionPolicyResolver(context)),
+                new ReservationVoucherService(context, new VoucherNumberGenerator(context)),
+                new StubPermissionService(true), new StubPropertyAuthorizationService(true));
         }
 
         public KoochDbContext Context { get; }

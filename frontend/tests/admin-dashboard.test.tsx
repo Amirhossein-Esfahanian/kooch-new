@@ -77,6 +77,15 @@ describe("Admin dashboard V1", () => {
     expect(screen.queryByText(/درآمد امروز|نمودار رزروها|رزروهای اخیر|فعالیت‌های اخیر|پیام‌ها/)).toBeNull();
   });
 
+  it("loads the pending receipt count only with ManagePayments", async () => {
+    mocks.permissions = ["ViewDashboard", "ManagePayments"];
+    mocks.apiRequest.mockImplementation(async (path: string) => path.startsWith("/admin/manual-payments/pending")
+      ? { items: [], totalCount: 4, page: 1, pageSize: 1, totalPages: 4 } : response());
+    render(<AdminDashboardPage />);
+    expect(await screen.findByText("پرداخت‌های در انتظار بررسی · ۴")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "مشاهده صف بررسی" }).getAttribute("href")).toBe("/admin/reservations#manual-payment-review");
+  });
+
   it("shows loading without counts, then a genuine empty pending-review state", async () => {
     let resolve!: (value: AdminDashboardResponse) => void;
     mocks.apiRequest.mockReturnValue(new Promise<AdminDashboardResponse>((next) => { resolve = next; }));

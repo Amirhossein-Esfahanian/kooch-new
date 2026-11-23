@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 const mocks = vi.hoisted(() => ({
   request: vi.fn(), id: "37", query: "", router: { push: vi.fn(), replace: vi.fn() },
+  toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() },
   session: { platformRole: "SuperAdmin", platformPermissions: [] as string[], propertyMemberships: [], authenticated: true, loading: false, workspaces: ["admin"] },
 }));
 vi.mock("next/navigation", () => ({ useParams: () => ({ reservationId: mocks.id }), useRouter: () => mocks.router, useSearchParams: () => new URLSearchParams(mocks.query) }));
@@ -13,10 +14,11 @@ vi.mock("@/components/reservations/ManualReservationDialog", () => ({ ManualRese
 vi.mock("@/components/reservations/vouchers/AdminVoucherView", () => ({ AdminVoucherView: () => <p>ووچر آزمون</p> }));
 vi.mock("@/lib/owner-api", async original => ({ ...(await original<typeof import("@/lib/owner-api")>()), apiRequest: mocks.request }));
 vi.mock("@/lib/currency", async original => ({ ...(await original<typeof import("@/lib/currency")>()), useSiteCurrencyLabel: () => "ریال" }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: mocks.toast }));
 
 import DetailsPage from "@/app/admin/reservations/[reservationId]/page";
 import VoucherPage from "@/app/admin/reservations/[reservationId]/voucher/page";
+import { ApiRequestError } from "@/lib/owner-api";
 
 const item = { id: 37, reservationNumber: "R-855759", source: "AdminCreated", propertyId: 3, propertyName: "اقامتگاه آزمون",
   status: "Confirmed", checkInDate: "2030-02-01", checkOutDate: "2030-02-03", guestName: "مهمان آزمون",
@@ -33,6 +35,43 @@ describe("dedicated Admin reservation details", () => {
       if (path === "/admin/reservations/37/activities" || path === "/admin/manual-payments/reservation/37") return [];
       throw new Error(path);
     });
+  });
+
+  it("opens the existing financial tab directly from the review queue and after reload", async () => {
+    mocks.query = "tab=financial";
+    const view = render(<DetailsPage />);
+    await screen.findByRole("heading", { level: 1, name: /R-/ });
+    expect(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }).getAttribute("aria-selected")).toBe("true");
+    view.unmount(); render(<DetailsPage />);
+    await screen.findByRole("heading", { level: 1, name: /R-/ });
+    expect(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it.each(["ManualPaymentDeadlineExpired", "ManualPaymentAlreadyReviewed"])("distinguishes manual review conflict %s and refreshes", async code => {
+    const message = "مهلت حفاظت بررسی رسید پایان یافته است.";
+    mocks.request.mockImplementation(async (path: string) => {
+      if (path === "/admin/reservations/37") return { ...item, status: "ApprovedAwaitingPayment" };
+      if (path === "/admin/reservations/37/activities") return [];
+      if (path === "/admin/manual-payments/reservation/37") return [{ paymentId: 41, reservationId: 37,
+        amount: 5_000_000, currency: "IRR", status: "Pending", verificationStatus: "PendingVerification",
+        method: "BankTransfer", paymentDate: "2030-01-01", submittedAtUtc: "2030-01-01T12:00:00Z" }];
+      if (path === "/admin/manual-payments/41/approve") throw new ApiRequestError(message, 409, { code });
+      throw new Error(path);
+    });
+    render(<DetailsPage />);
+    fireEvent.click(await screen.findByRole("tab", { name: "پرداخت و بازپرداخت" }));
+    fireEvent.click(await screen.findByRole("button", { name: "تأیید پرداخت" }));
+    const confirmation = await screen.findByRole("alertdialog", { name: "تأیید پرداخت دستی" });
+    fireEvent.click(within(confirmation).getByRole("button", { name: "تأیید پرداخت" }));
+    if (code === "ManualPaymentDeadlineExpired") {
+      await waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith(message));
+      expect(mocks.toast.warning).not.toHaveBeenCalled();
+    } else {
+      await waitFor(() => expect(mocks.toast.warning).toHaveBeenCalledWith("این پرداخت قبلاً توسط مدیر دیگری بررسی شده است. اطلاعات به‌روز شد."));
+      expect(mocks.toast.error).not.toHaveBeenCalled();
+    }
+    await waitFor(() => expect(mocks.request.mock.calls.filter(([path]) => path === "/admin/reservations/37")).toHaveLength(2));
+    expect(mocks.request.mock.calls.filter(([path]) => path === "/admin/manual-payments/41/approve")).toHaveLength(1);
   });
 
   it("loads from its stable ID on direct entry and reload without loading the list", async () => {

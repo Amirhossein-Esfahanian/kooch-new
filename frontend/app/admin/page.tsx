@@ -11,6 +11,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { formatDateTime } from "@/lib/account-reservations";
 import { apiRequest, ApiRequestError, type AdminDashboardResponse } from "@/lib/owner-api";
+import { ManualPaymentReviewQueue } from "@/components/reservations/ManualPaymentReviewQueue";
 
 const number = (value: number) => new Intl.NumberFormat("fa-IR").format(value);
 
@@ -137,6 +138,7 @@ function AdminDashboardContent() {
         </>
       )}
       {canManageTasks && <AdminDashboardTasks />}
+      {(platformRole === "SuperAdmin" || platformPermissions.includes("ManagePayments")) && <ManualPaymentReviewQueue summaryOnly />}
     </main>
   );
 }

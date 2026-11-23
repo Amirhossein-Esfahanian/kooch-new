@@ -13,6 +13,11 @@ namespace Kooch.Api.Controllers;
 public sealed class AdminManualPaymentsController(IAdminManualPaymentService manualPaymentService)
     : AuthenticatedControllerBase
 {
+    [HttpGet("pending")]
+    public async Task<ActionResult<Kooch.Api.Dtos.Reservations.PagedResult<ManualPaymentReviewQueueItem>>> GetPendingReview(
+        [FromQuery] ManualPaymentReviewQueueQuery query, CancellationToken cancellationToken) =>
+        Ok(await manualPaymentService.GetPendingReviewAsync(query, GetCurrentUser().UserId, cancellationToken));
+
     [HttpGet("orders/{bookingSessionId:int}")]
     public async Task<ActionResult<ManualOrderBalanceResponse>> GetOrderBalance(
         int bookingSessionId, CancellationToken cancellationToken) =>
@@ -29,7 +34,7 @@ public sealed class AdminManualPaymentsController(IAdminManualPaymentService man
         int reservationId,
         CancellationToken cancellationToken)
     {
-        return Ok(await manualPaymentService.GetByReservationAsync(reservationId, cancellationToken));
+        return Ok(await manualPaymentService.GetByReservationAsync(reservationId, GetCurrentUser().UserId, cancellationToken));
     }
 
     [HttpPost]

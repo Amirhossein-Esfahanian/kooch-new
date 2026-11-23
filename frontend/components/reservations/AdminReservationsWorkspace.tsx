@@ -31,6 +31,7 @@ import {
 } from "@/components/reservations/ReservationDetailsDialog";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import { AdminTaskCreateDialog, type TaskReservationContext } from "@/components/tasks/AdminTaskCreateDialog";
+import { ManualPaymentReviewQueue } from "./ManualPaymentReviewQueue";
 import {
   apiRequest,
   ApiRequestError,
@@ -174,7 +175,9 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [manualPayments, setManualPayments] = useState<AdminManualPayment[]>([]);
+  const [reviewQueueRefresh, setReviewQueueRefresh] = useState(0);
   const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
+  const [existingPaymentLink, setExistingPaymentLink] = useState<ReservationPaymentLinkResponse | null>(null);
   const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<
     number | null
   >(null);
@@ -325,6 +328,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
     openAfterFetch = false,
   ) => {
     const requestId = ++detailsRequestRef.current;
+    setExistingPaymentLink(null);
     const reservationId = reservation.reservationId ?? reservation.id;
     if (!openAfterFetch) setSelectedReservation(reservation);
     setManualPayments([]);
@@ -421,6 +425,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
     ]);
     setSelectedReservation(details);
     setManualPayments(payments);
+    setReviewQueueRefresh(value => value + 1);
     await loadReservations();
   }
 
@@ -465,10 +470,12 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
       );
     } catch (caught) {
       const isConflict = caught instanceof ApiRequestError && caught.status === 409;
-      const message = isConflict
+      const alreadyReviewed = isConflict && typeof caught.body === "object" && caught.body !== null &&
+        "code" in caught.body && caught.body.code === "ManualPaymentAlreadyReviewed";
+      const message = alreadyReviewed
         ? "این پرداخت قبلاً توسط مدیر دیگری بررسی شده است. اطلاعات به‌روز شد."
         : caught instanceof Error ? caught.message : "تأیید پرداخت دستی انجام نشد.";
-      if (isConflict) toast.warning(message);
+      if (alreadyReviewed) toast.warning(message);
       else toast.error(message);
       if (isConflict) {
         await refreshReservationAndPayments(reservationId).catch(() => undefined);
@@ -490,10 +497,12 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
       toast.success("پرداخت دستی رد شد.");
     } catch (caught) {
       const isConflict = caught instanceof ApiRequestError && caught.status === 409;
-      const message = isConflict
+      const alreadyReviewed = isConflict && typeof caught.body === "object" && caught.body !== null &&
+        "code" in caught.body && caught.body.code === "ManualPaymentAlreadyReviewed";
+      const message = alreadyReviewed
         ? "این پرداخت قبلاً توسط مدیر دیگری بررسی شده است. اطلاعات به‌روز شد."
         : caught instanceof Error ? caught.message : "رد پرداخت دستی انجام نشد.";
-      if (isConflict) toast.warning(message);
+      if (alreadyReviewed) toast.warning(message);
       else toast.error(message);
       if (isConflict) {
         await refreshReservationAndPayments(reservationId).catch(() => undefined);
@@ -746,6 +755,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
     if (!reservationId) return;
 
     setPaymentLinkSendingId(reservationId);
+    setExistingPaymentLink(null);
     setError("");
 
     try {
@@ -753,6 +763,7 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
         `/admin/reservations/${reservationId}/payment-link/send`,
         { method: "POST" },
       );
+      if (response.reservationId === reservationId) setExistingPaymentLink(response);
       await loadReservations();
 
       const devLink = response.devPaymentLink ?? response.paymentLink;
@@ -801,6 +812,9 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
           title="رزروها"
         />
 
+        {canReadAdmin && canManagePayments && <ManualPaymentReviewQueue key={filters.propertyId}
+          propertyId={filters.propertyId ? Number(filters.propertyId) : undefined} refreshKey={reviewQueueRefresh}
+          returnTo={reservationListHref(filters, currentPage)} />}
         {error && (
           <KoochCard
             className="border-destructive/30 bg-destructive/10 text-destructive"
@@ -1297,6 +1311,8 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
         </>}
 
         <ReservationDetailsDialog
+          initialTab={isDetailsPage && searchParams.get("tab") === "financial" ? "financial" : "reservation"}
+          paymentLink={existingPaymentLink}
           presentation={isDetailsPage ? "page" : "dialog"}
           showAdminActivities
           canAddInternalNote={canManageReservations}

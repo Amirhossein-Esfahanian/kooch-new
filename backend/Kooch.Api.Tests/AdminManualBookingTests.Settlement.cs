@@ -124,7 +124,7 @@ public sealed partial class AdminManualBookingTests
         Assert.Equal(540m, await h.DbContext.FinancialEntries.Where(e => e.EntryType == FinancialEntryType.PropertyPayable).SumAsync(e => e.Amount));
         Assert.Equal(3, await h.DbContext.ReservationVouchers.CountAsync());
         Assert.All(await h.DbContext.Reservations.ToListAsync(), reservation => Assert.Equal(ReservationStatus.Confirmed, reservation.Status));
-        var detail = Assert.Single(await service.GetByReservationAsync(result.Allocations[0].ReservationId));
+        var detail = Assert.Single(await service.GetByReservationAsync(result.Allocations[0].ReservationId, 1));
         Assert.Equal(200m, detail.Amount); // Never display the whole receipt as this room's payment.
         Assert.Equal(receipt.Id, detail.PaymentId);
         balance = await service.GetOrderBalanceAsync(order, 1);

@@ -106,3 +106,8 @@ export function reservationDetailsHref(id: number, returnTo = listPath) {
   const target = safeReservationReturnHref(returnTo);
   return `${listPath}/${id}${target === listPath ? "" : `?returnTo=${encodeURIComponent(target)}`}`;
 }
+
+export function reservationFinancialHref(id: number, returnTo = listPath) {
+  const href = reservationDetailsHref(id, returnTo);
+  return `${href}${href.includes("?") ? "&" : "?"}tab=financial`;
+}
