@@ -137,8 +137,8 @@ function AdminDashboardContent() {
           </KoochCard>
         </>
       )}
-      {canManageTasks && <AdminDashboardTasks />}
       {(platformRole === "SuperAdmin" || platformPermissions.includes("ManagePayments")) && <ManualPaymentReviewQueue summaryOnly />}
+      {canManageTasks && <AdminDashboardTasks />}
     </main>
   );
 }

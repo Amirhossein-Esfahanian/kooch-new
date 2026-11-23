@@ -83,7 +83,19 @@ describe("Admin dashboard V1", () => {
       ? { items: [], totalCount: 4, page: 1, pageSize: 1, totalPages: 4 } : response());
     render(<AdminDashboardPage />);
     expect(await screen.findByText("پرداخت‌های در انتظار بررسی · ۴")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "مشاهده صف بررسی" }).getAttribute("href")).toBe("/admin/reservations#manual-payment-review");
+    expect(screen.getByRole("link", { name: "بررسی پرداخت‌ها" }).getAttribute("href")).toBe("/admin/reservations?tab=payments");
+    expect(screen.queryByRole("heading", { name: /پرداخت‌های در انتظار بررسی/ })).toBeNull();
+  });
+
+  it("omits the payment review row when the authoritative count is zero", async () => {
+    mocks.permissions = ["ViewDashboard", "ManagePayments"];
+    mocks.apiRequest.mockImplementation(async (path: string) => path.startsWith("/admin/manual-payments/pending")
+      ? { items: [], totalCount: 0, page: 1, pageSize: 1, totalPages: 0 } : response());
+    render(<AdminDashboardPage />);
+    await screen.findByText("اقامتگاه سرو");
+    await waitFor(() => expect(screen.queryByText(/در حال دریافت تعداد پرداخت/)).toBeNull());
+    expect(screen.queryByText(/پرداخت‌های در انتظار بررسی/)).toBeNull();
+    expect(screen.queryByRole("link", { name: "بررسی پرداخت‌ها" })).toBeNull();
   });
 
   it("shows loading without counts, then a genuine empty pending-review state", async () => {

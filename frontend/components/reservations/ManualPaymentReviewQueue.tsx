@@ -10,7 +10,7 @@ import { apiRequest, ApiRequestError } from "@/lib/owner-api";
 import { formatDateTime, statusLabels } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
-import { reservationFinancialHref } from "./admin-reservation-navigation";
+import { paymentReviewListHref, reservationFinancialHref } from "./admin-reservation-navigation";
 import styles from "./ManualPaymentReviewQueue.module.css";
 
 export type ManualPaymentReviewItem = {
@@ -32,10 +32,14 @@ const states = {
 const methods: Record<string, string> = { CardToCard: "کارت‌به‌کارت", BankTransfer: "واریز بانکی", Paya: "پایا",
   Satna: "ساتنا", AccountTransfer: "انتقال حساب", Other: "سایر" };
 
-export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo, summaryOnly = false }: {
+export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo, summaryOnly = false,
+  page: controlledPage, onPageChange, onTotalCountChange, onOpenReview }: {
   propertyId?: number; refreshKey?: number; returnTo?: string; summaryOnly?: boolean;
+  page?: number; onPageChange?: (page: number) => void;
+  onTotalCountChange?: (count: number) => void; onOpenReview?: () => void;
 }) {
-  const [page, setPage] = useState(1);
+  const [localPage, setLocalPage] = useState(1);
+  const page = summaryOnly ? 1 : controlledPage ?? localPage;
   const [retry, setRetry] = useState(0);
   const [data, setData] = useState<ManualPaymentReviewPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,7 +53,8 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
       .then(result => {
         if (controller.signal.aborted) return;
         const lastPage = Math.max(1, result.totalPages);
-        if (page > lastPage) { setPage(lastPage); return; }
+        onTotalCountChange?.(result.totalCount);
+        if (page > lastPage) { setLocalPage(lastPage); onPageChange?.(lastPage); return; }
         setData(result);
       })
       .catch((reason: unknown) => {
@@ -58,24 +63,38 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
       })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
-  }, [page, propertyId, refreshKey, retry, summaryOnly]);
+  }, [page, propertyId, refreshKey, retry, summaryOnly, onTotalCountChange, onPageChange]);
   useEffect(() => {
     const refresh = () => setRetry(value => value + 1);
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, []);
 
-  return <section aria-label={title} id={summaryOnly ? undefined : "manual-payment-review"}>
+  if (summaryOnly) {
+    if (loading) return <p role="status" className="text-sm text-muted-foreground">در حال دریافت تعداد پرداخت‌های در انتظار بررسی...</p>;
+    if (error) return <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
+      <span>{error}</span><KoochButton size="sm" variant="ghost" onClick={() => setRetry(value => value + 1)}>تلاش دوباره</KoochButton>
+    </div>;
+    if (!data?.totalCount) return null;
+    return <div className="flex min-w-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm">
+      <p className="font-semibold text-foreground">{title} · {toPersianDigits(data.totalCount)}</p>
+      {onOpenReview ? <KoochButton size="sm" variant="ghost" onClick={onOpenReview}>بررسی پرداخت‌ها</KoochButton>
+        : <Link href={paymentReviewListHref} className="inline-flex min-h-11 items-center rounded font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">بررسی پرداخت‌ها</Link>}
+    </div>;
+  }
+
+  function changePage(value: number) { setLocalPage(value); onPageChange?.(value); }
+
+  return <section aria-label={title} id="manual-payment-review">
     <KoochCard padding="sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-bold text-foreground">{title}{data && ` · ${toPersianDigits(data.totalCount)}`}</h2>
-        {summaryOnly ? <Link href="/admin/reservations#manual-payment-review" className="rounded text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">مشاهده صف بررسی</Link>
-          : <KoochButton size="sm" variant="outline" loading={loading} onClick={() => setRetry(value => value + 1)}>دریافت دوباره صف</KoochButton>}
+        <h2 className="text-base font-bold text-foreground">{title}</h2>
+        <KoochButton size="sm" variant="outline" loading={loading} onClick={() => setRetry(value => value + 1)}>دریافت دوباره صف</KoochButton>
       </div>
       {loading ? <p role="status" className="mt-3 text-sm text-muted-foreground">در حال دریافت صف بررسی...</p>
         : error ? <KoochAlert className="mt-3" title="صف بررسی در دسترس نیست" variant="destructive">
           <p>{error}</p><KoochButton size="sm" className="mt-2" variant="outline" onClick={() => setRetry(value => value + 1)}>تلاش دوباره</KoochButton>
-        </KoochAlert> : data && !summaryOnly ? <>
+        </KoochAlert> : data ? <>
           {data.items.length === 0 ? <p role="status" className="mt-3 text-sm text-muted-foreground">رسیدی در انتظار بررسی نیست.</p>
             : <ul className={styles.list}>{data.items.map(item => <li key={item.paymentId} className={styles.row}>
               <div className={styles.main}>
@@ -105,8 +124,8 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
             </li>)}</ul>}
           {data.totalPages > 1 && <nav aria-label="صفحه‌بندی صف بررسی" className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-xs">
             <span>صفحه {toPersianDigits(data.page)} · {toPersianDigits(data.totalCount)} رسید</span>
-            <div className="flex gap-2"><KoochButton size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(value => value - 1)}>قبلی</KoochButton>
-              <KoochButton size="sm" variant="outline" disabled={page >= data.totalPages} onClick={() => setPage(value => value + 1)}>بعدی</KoochButton></div>
+            <div className="flex gap-2"><KoochButton size="sm" variant="outline" disabled={page <= 1} onClick={() => changePage(page - 1)}>قبلی</KoochButton>
+              <KoochButton size="sm" variant="outline" disabled={page >= data.totalPages} onClick={() => changePage(page + 1)}>بعدی</KoochButton></div>
           </nav>}
         </> : null}
     </KoochCard>

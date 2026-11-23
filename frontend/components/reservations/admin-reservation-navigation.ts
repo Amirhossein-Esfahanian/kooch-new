@@ -73,6 +73,13 @@ export const initialFilters: ReservationListQuery = {
 const listPath = "/admin/reservations";
 type Query = Pick<URLSearchParams, "get">;
 
+export type ReservationListTab = "reservations" | "payments";
+export const paymentReviewListHref = `${listPath}?tab=payments`;
+
+export function readReservationListTab(params: Query): ReservationListTab {
+  return params.get("tab") === "payments" ? "payments" : "reservations";
+}
+
 export function readReservationListState(params: Query) {
   const filters = { ...initialFilters };
   for (const key of Object.keys(filters) as Array<keyof ReservationListQuery>) {
@@ -83,12 +90,13 @@ export function readReservationListState(params: Query) {
   return { filters, page };
 }
 
-export function reservationListHref(filters: ReservationListQuery, page: number) {
+export function reservationListHref(filters: ReservationListQuery, page: number, tab: ReservationListTab = "reservations") {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(filters)) {
     if (value.trim()) params.set(key === "reservationNumber" ? "filterReservationNumber" : key, value.trim());
   }
   if (page > 1) params.set("page", String(page));
+  if (tab === "payments") params.set("tab", tab);
   return listPath + (params.size ? `?${params}` : "");
 }
 
@@ -98,7 +106,7 @@ export function safeReservationReturnHref(value: string | null) {
     const url = new URL(value, "https://kooch.invalid");
     if (url.origin !== "https://kooch.invalid" || url.pathname !== listPath || url.hash) return listPath;
     const { filters, page } = readReservationListState(url.searchParams);
-    return reservationListHref(filters, page);
+    return reservationListHref(filters, page, readReservationListTab(url.searchParams));
   } catch { return listPath; }
 }
 

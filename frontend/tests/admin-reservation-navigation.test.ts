@@ -1,7 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { initialFilters, readReservationListState, reservationDetailsHref, reservationListHref, safeReservationReturnHref } from "@/components/reservations/admin-reservation-navigation";
+import { initialFilters, readReservationListState, readReservationListTab, reservationDetailsHref, reservationListHref, safeReservationReturnHref } from "@/components/reservations/admin-reservation-navigation";
 
 describe("Admin reservation routing context", () => {
+  it("preserves the payment review tab with filters and pagination through details navigation", () => {
+    const origin = reservationListHref({ ...initialFilters, propertyId: "3", guestSearch: "مهمان" }, 4, "payments");
+    const details = new URL(reservationDetailsHref(37, origin), "https://test.invalid");
+    expect(details.searchParams.get("returnTo")).toBe(origin);
+    expect(safeReservationReturnHref(origin)).toBe(origin);
+    expect(readReservationListTab(new URL(origin, "https://test.invalid").searchParams)).toBe("payments");
+  });
+  it.each(["", "unknown", "financial"])("defaults unsupported list tab %s to reservations", tab => {
+    expect(readReservationListTab(new URLSearchParams({ tab }))).toBe("reservations");
+    expect(safeReservationReturnHref(`/admin/reservations?tab=${tab}`)).toBe("/admin/reservations");
+  });
   it("round-trips every list filter and page without confusing a number filter with an inbound details link", () => {
     const filters = { ...initialFilters };
     Object.keys(filters).forEach((key, index) => Object.assign(filters, { [key]: `value-${index}` }));

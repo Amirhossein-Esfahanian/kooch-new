@@ -80,7 +80,7 @@ describe("pending manual receipt queue", () => {
     render(<ManualPaymentReviewQueue summaryOnly />);
     await screen.findByText("پرداخت‌های در انتظار بررسی · ۲۱");
     expect(mocks.request).toHaveBeenCalledWith("/admin/manual-payments/pending?page=1&pageSize=1", expect.anything());
-    expect(screen.getByRole("link", { name: "مشاهده صف بررسی" }).getAttribute("href")).toBe("/admin/reservations#manual-payment-review");
+    expect(screen.getByRole("link", { name: "بررسی پرداخت‌ها" }).getAttribute("href")).toBe("/admin/reservations?tab=payments");
     expect(screen.queryByText("R-37")).toBeNull();
   });
 });

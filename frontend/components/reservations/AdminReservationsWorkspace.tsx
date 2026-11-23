@@ -1,11 +1,11 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
-import { initialFilters, readReservationListState, reservationListHref, reservationDetailsHref, safeReservationReturnHref, type ReservationListQuery } from "./admin-reservation-navigation";
+import { initialFilters, readReservationListState, readReservationListTab, reservationListHref, reservationDetailsHref, safeReservationReturnHref, type ReservationListQuery, type ReservationListTab } from "./admin-reservation-navigation";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import {
@@ -42,6 +42,12 @@ import {
 import { useSiteCurrencyLabel } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { toast } from "sonner";
+import styles from "./AdminReservationsWorkspace.module.css";
+
+const listTabs = [
+  { value: "reservations", label: "همه رزروها" },
+  { value: "payments", label: "بررسی پرداخت‌ها" },
+] as const;
 
 type ReservationStatusFilter = "" | ReservationTableStatus;
 type ReservationBookingModeFilter = "" | "Instant" | "OnRequest";
@@ -176,6 +182,11 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [manualPayments, setManualPayments] = useState<AdminManualPayment[]>([]);
   const [reviewQueueRefresh, setReviewQueueRefresh] = useState(0);
+  const [reviewPage, setReviewPage] = useState(1);
+  const [pendingReviewCount, setPendingReviewCount] = useState<number | null>(null);
+  const tabsId = useId();
+  const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
+  const [focusedTab, setFocusedTab] = useState<ReservationListTab>(readReservationListTab(searchParams));
   const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
   const [existingPaymentLink, setExistingPaymentLink] = useState<ReservationPaymentLinkResponse | null>(null);
   const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<
@@ -186,6 +197,10 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
   const [filtersOpen, setFiltersOpen] = useState(false);
   const canManagePayments =
     platformRole === "SuperAdmin" || platformPermissions.includes("ManagePayments");
+  const canReviewPayments = canReadAdmin && canManagePayments;
+  const activeListTab = canReviewPayments ? readReservationListTab(searchParams) : "reservations";
+  useEffect(() => { setFocusedTab(activeListTab); }, [activeListTab]);
+  useEffect(() => { setReviewPage(1); setPendingReviewCount(null); }, [filters.propertyId]);
   const canManageReservations =
     platformRole === "SuperAdmin" || platformPermissions.includes("ManageReservations");
   const propertyOptions = useMemo(
@@ -373,7 +388,26 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
     return () => { detailsRequestRef.current += 1; };
   }, [isDetailsPage, reservationId, viewReservation, canReadAdmin]);
 
-  const currentListHref = reservationListHref(filters, currentPage);
+  const currentListHref = reservationListHref(filters, currentPage, activeListTab);
+
+  function activateListTab(tab: ReservationListTab) {
+    if (tab !== activeListTab) router.push(reservationListHref(filters, currentPage, tab), { scroll: false });
+  }
+
+  function navigateListTabs(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); activateListTab(listTabs[index].value); return;
+    }
+    let next: number;
+    const count = canReviewPayments ? listTabs.length : 1;
+    if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = count - 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      next = (index + (event.key === "ArrowLeft" ? 1 : -1) + count) % count;
+    } else return;
+    event.preventDefault();
+    setFocusedTab(listTabs[next].value); tabButtons.current[next]?.focus();
+  }
   useEffect(() => {
     if (isDetailsPage || deepLinkReservationNumber || deepLinkReservationId > 0) return;
     if (window.location.pathname + window.location.search !== currentListHref) {
@@ -812,9 +846,22 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
           title="رزروها"
         />
 
-        {canReadAdmin && canManagePayments && <ManualPaymentReviewQueue key={filters.propertyId}
-          propertyId={filters.propertyId ? Number(filters.propertyId) : undefined} refreshKey={reviewQueueRefresh}
-          returnTo={reservationListHref(filters, currentPage)} />}
+        {canReviewPayments && activeListTab === "reservations" && <ManualPaymentReviewQueue key={`summary-${filters.propertyId}`}
+          summaryOnly propertyId={filters.propertyId ? Number(filters.propertyId) : undefined}
+          refreshKey={reviewQueueRefresh} onTotalCountChange={setPendingReviewCount}
+          onOpenReview={() => { activateListTab("payments"); tabButtons.current[1]?.focus(); }} />}
+        <div role="tablist" aria-label="مدیریت رزروها" dir="rtl" className={styles.tabs}>
+          {listTabs.filter(tab => tab.value === "reservations" || canReviewPayments).map((tab, index) => <button
+            key={tab.value} type="button" role="tab" id={`${tabsId}-${tab.value}-tab`}
+            aria-controls={`${tabsId}-${tab.value}-panel`} aria-selected={activeListTab === tab.value}
+            tabIndex={focusedTab === tab.value ? 0 : -1} ref={node => { tabButtons.current[index] = node; }}
+            onFocus={() => setFocusedTab(tab.value)} onClick={() => activateListTab(tab.value)}
+            onKeyDown={event => navigateListTabs(event, index)}>
+            {tab.label}{tab.value === "payments" && pendingReviewCount !== null && <span className={styles.count}>{toPersianDigits(pendingReviewCount)}</span>}
+          </button>)}
+        </div>
+        <section role="tabpanel" id={`${tabsId}-reservations-panel`} aria-labelledby={`${tabsId}-reservations-tab`}
+          tabIndex={0} hidden={activeListTab !== "reservations"} className={styles.panel}>
         {error && (
           <KoochCard
             className="border-destructive/30 bg-destructive/10 text-destructive"
@@ -1307,6 +1354,13 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
           reservations={reservations}
           totalPages={totalPages}
         />
+        </section>
+        {canReviewPayments && <section role="tabpanel" id={`${tabsId}-payments-panel`} aria-labelledby={`${tabsId}-payments-tab`}
+          tabIndex={0} hidden={activeListTab !== "payments"} className={styles.panel}>
+          {activeListTab === "payments" && <ManualPaymentReviewQueue key={filters.propertyId}
+            propertyId={filters.propertyId ? Number(filters.propertyId) : undefined} refreshKey={reviewQueueRefresh}
+            page={reviewPage} onPageChange={setReviewPage} onTotalCountChange={setPendingReviewCount} returnTo={currentListHref} />}
+        </section>}
 
         </>}
 

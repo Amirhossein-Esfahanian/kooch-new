@@ -38,13 +38,16 @@ describe("dedicated Admin reservation details", () => {
   });
 
   it("opens the existing financial tab directly from the review queue and after reload", async () => {
-    mocks.query = "tab=financial";
+    const origin = "/admin/reservations?propertyId=3&page=4&tab=payments";
+    mocks.query = new URLSearchParams({ tab: "financial", returnTo: origin }).toString();
     const view = render(<DetailsPage />);
     await screen.findByRole("heading", { level: 1, name: /R-/ });
     expect(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("link", { name: "بازگشت به رزروها" }).getAttribute("href")).toBe(origin);
     view.unmount(); render(<DetailsPage />);
     await screen.findByRole("heading", { level: 1, name: /R-/ });
     expect(screen.getByRole("tab", { name: "پرداخت و بازپرداخت" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("link", { name: "بازگشت به رزروها" }).getAttribute("href")).toBe(origin);
   });
 
   it.each(["ManualPaymentDeadlineExpired", "ManualPaymentAlreadyReviewed"])("distinguishes manual review conflict %s and refreshes", async code => {
