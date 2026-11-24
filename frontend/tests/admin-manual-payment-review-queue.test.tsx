@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({ request: vi.fn() }));
 vi.mock("@/lib/owner-api", async original => ({ ...(await original<typeof import("@/lib/owner-api")>()), apiRequest: mocks.request }));
@@ -18,22 +18,49 @@ describe("pending manual receipt queue", () => {
     const url = new URL(link.getAttribute("href")!, "https://test.invalid");
     expect(url.pathname).toBe("/admin/reservations/37"); expect(url.searchParams.get("tab")).toBe("financial");
     expect(url.searchParams.get("returnTo")).toBe("/admin/reservations?propertyId=3&page=4");
-    const disclosure = screen.getByText("اطلاعات بیشتر", { selector: "summary" }).closest("details")!;
-    expect(disclosure.open).toBe(false);
-    fireEvent.click(screen.getByText("اطلاعات بیشتر", { selector: "summary" }));
-    expect(disclosure.open).toBe(true);
+    const table = screen.getByRole("table", { name: "رسیدهای در انتظار بررسی" });
+    expect(screen.getByRole("heading", { name: /پرداخت‌های در انتظار بررسی\s*· ۲۱/ })).toBeTruthy();
+    expect(within(table).getAllByRole("columnheader").map(cell => cell.textContent))
+      .toEqual(["رزرو / مهمان", "مبلغ", "وضعیت بررسی", "اقدام"]);
+    const disclosure = screen.getByRole("button", { name: "جزئیات رسید R-37" });
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByText("O-12")?.closest("tr")?.hidden).toBe(true);
+    expect(within(table).getByText("در انتظار بررسی")).toBeTruthy();
+    expect(within(table).getByText("حفاظت فعال")).toBeTruthy();
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(disclosure.getAttribute("aria-controls")!)?.closest("tr")?.hidden).toBe(false);
     expect(screen.getByText("O-12")).toBeTruthy(); expect(screen.getByText(/۵٬۰۰۰٬۰۰۰ ریال/)).toBeTruthy();
     for (const label of ["زمان ثبت رسید", "مهلت اصلی پرداخت", "پایان حفاظت بررسی", "وضعیت رزرو"]) expect(screen.getByText(label)).toBeTruthy();
     expect(mocks.request).toHaveBeenCalledWith("/admin/manual-payments/pending?page=1&pageSize=20&propertyId=3", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(screen.queryByRole("button", { name: "تأیید پرداخت" })).toBeNull();
+    fireEvent.click(disclosure);
+    expect(disclosure.getAttribute("aria-expanded")).toBe("false");
   });
   it("distinguishes protected, approaching, expired and unprotected financial follow-up receipts", async () => {
     mocks.request.mockResolvedValue(response((["Protected", "ExpiringSoon", "ProtectionExpired", "FinancialFollowUp"] as const)
       .map((reviewState, i) => ({ ...receipt, paymentId: i, reviewState, reviewProtectionExpiresAtUtc: i === 3 ? null : receipt.reviewProtectionExpiresAtUtc }))));
     render(<ManualPaymentReviewQueue />);
-    for (const label of ["در انتظار بررسی؛ حفاظت فعال", "نزدیک پایان حفاظت", "حفاظت پایان یافته؛ نیازمند پیگیری مالی", "بدون حفاظت؛ نیازمند پیگیری مالی"])
+    for (const label of ["حفاظت فعال", "نزدیک پایان حفاظت", "حفاظت پایان یافته؛ نیازمند پیگیری مالی", "بدون حفاظت؛ نیازمند پیگیری مالی"])
       expect(await screen.findByText(label)).toBeTruthy();
+    expect(screen.getAllByText("در انتظار بررسی")).toHaveLength(4);
     expect(screen.getByText("فاقد حفاظت معتبر")).toBeTruthy();
+  });
+  it("opens details independently per receipt and refreshes from the compact header without duplicating a parent counter", async () => {
+    const onCount = vi.fn();
+    mocks.request.mockResolvedValue(response([receipt, { ...receipt, paymentId: 2, reservationNumber: "R-38" }]));
+    render(<ManualPaymentReviewQueue onTotalCountChange={onCount} />);
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
+    expect(screen.getByRole("heading", { name: "پرداخت‌های در انتظار بررسی" })).toBeTruthy();
+    expect(onCount).toHaveBeenCalledWith(21);
+    const first = screen.getByRole("button", { name: "جزئیات رسید R-37" });
+    const second = screen.getByRole("button", { name: "جزئیات رسید R-38" });
+    fireEvent.click(first);
+    expect(first.getAttribute("aria-expanded")).toBe("true");
+    expect(second.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(screen.getByRole("button", { name: "به‌روزرسانی" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+    await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
   });
   it("paginates on the server without fetching every page and refreshes after review invalidation", async () => {
     mocks.request.mockImplementation(async (path: string) => response([receipt], path.includes("page=2") ? 2 : 1));

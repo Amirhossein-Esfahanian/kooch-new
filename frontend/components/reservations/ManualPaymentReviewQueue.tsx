@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochTable, KoochTableHeader, KoochTableHead, KoochTableRow, KoochTableCell } from "@/components/KoochTable";
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
 import { formatDateTime, statusLabels } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
@@ -24,10 +25,10 @@ export type ManualPaymentReviewPage = {
 };
 const title = "پرداخت‌های در انتظار بررسی";
 const states = {
-  Protected: { label: "در انتظار بررسی؛ حفاظت فعال", variant: "default" },
-  ExpiringSoon: { label: "نزدیک پایان حفاظت", variant: "default" },
-  ProtectionExpired: { label: "حفاظت پایان یافته؛ نیازمند پیگیری مالی", variant: "destructive" },
-  FinancialFollowUp: { label: "بدون حفاظت؛ نیازمند پیگیری مالی", variant: "muted" },
+  Protected: { label: "حفاظت فعال", warning: false },
+  ExpiringSoon: { label: "نزدیک پایان حفاظت", warning: true },
+  ProtectionExpired: { label: "حفاظت پایان یافته؛ نیازمند پیگیری مالی", warning: true },
+  FinancialFollowUp: { label: "بدون حفاظت؛ نیازمند پیگیری مالی", warning: true },
 } as const;
 const methods: Record<string, string> = { CardToCard: "کارت‌به‌کارت", BankTransfer: "واریز بانکی", Paya: "پایا",
   Satna: "ساتنا", AccountTransfer: "انتقال حساب", Other: "سایر" };
@@ -44,6 +45,8 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
   const [data, setData] = useState<ManualPaymentReviewPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(() => new Set());
+  const detailsId = useId();
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true); setError(null); setData(null);
@@ -84,44 +87,67 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
   }
 
   function changePage(value: number) { setLocalPage(value); onPageChange?.(value); }
+  function toggleDetails(paymentId: number) {
+    setExpanded(current => {
+      const next = new Set(current);
+      if (next.has(paymentId)) next.delete(paymentId);
+      else next.add(paymentId);
+      return next;
+    });
+  }
 
   return <section aria-label={title} id="manual-payment-review">
     <KoochCard padding="sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-base font-bold text-foreground">{title}</h2>
-        <KoochButton size="sm" variant="outline" loading={loading} onClick={() => setRetry(value => value + 1)}>دریافت دوباره صف</KoochButton>
+      <div className={styles.header}>
+        <h2 className="text-sm font-bold text-foreground">{title}
+          {data && !onTotalCountChange && <span className={styles.count}> · {toPersianDigits(data.totalCount)}</span>}
+        </h2>
+        <KoochButton size="sm" variant="outline" loading={loading} onClick={() => setRetry(value => value + 1)}>به‌روزرسانی</KoochButton>
       </div>
       {loading ? <p role="status" className="mt-3 text-sm text-muted-foreground">در حال دریافت صف بررسی...</p>
         : error ? <KoochAlert className="mt-3" title="صف بررسی در دسترس نیست" variant="destructive">
           <p>{error}</p><KoochButton size="sm" className="mt-2" variant="outline" onClick={() => setRetry(value => value + 1)}>تلاش دوباره</KoochButton>
         </KoochAlert> : data ? <>
           {data.items.length === 0 ? <p role="status" className="mt-3 text-sm text-muted-foreground">رسیدی در انتظار بررسی نیست.</p>
-            : <ul className={styles.list}>{data.items.map(item => <li key={item.paymentId} className={styles.row}>
-              <div className={styles.main}>
-                <div className={styles.identity}>
-                  <bdi className="font-semibold text-foreground">{item.reservationNumber}</bdi>
-                  <span className="break-words text-sm text-foreground">{item.guestName || "نام مهمان ثبت نشده"}</span>
-                </div>
-                <strong className={styles.amount}>{formatCurrency(item.amount, { currencyLabel: item.currency === "IRR" ? "ریال" : item.currency })}</strong>
-                <div className={styles.urgency}>
-                  <KoochBadge variant={states[item.reviewState].variant}>{states[item.reviewState].label}</KoochBadge>
-                </div>
-                <Link className={styles.review} aria-label={`بررسی پرداخت ${item.reservationNumber}`}
-                  href={reservationFinancialHref(item.reservationId, returnTo)}>بررسی پرداخت</Link>
-              </div>
-              <details className={styles.details}>
-                <summary>اطلاعات بیشتر<span className="sr-only"> برای رسید {item.reservationNumber}</span></summary>
-                <dl className={styles.metadata}>{[
-                  ["اقامتگاه", item.propertyName], ["روش پرداخت", methods[item.method] ?? item.method],
-                  ...(item.orderCode ? [["سفارش", item.orderCode]] : []),
-                  ["زمان ثبت رسید", item.createdAtUtc ? formatDateTime(item.createdAtUtc) : "نامشخص"],
-                  ["مهلت اصلی پرداخت", item.paymentExpiresAtUtc ? formatDateTime(item.paymentExpiresAtUtc) : "نامشخص"],
-                  ["پایان حفاظت بررسی", item.reviewProtectionExpiresAtUtc ? formatDateTime(item.reviewProtectionExpiresAtUtc) : "فاقد حفاظت معتبر"],
-                  ["وضعیت رزرو", statusLabels[item.reservationStatus] ?? (item.reservationStatus === "CapacityLost" ? "ظرفیت از دست رفته" : item.reservationStatus)],
-                ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd><bdi>{value}</bdi></dd></div>)}</dl>
-                <p className={styles.caption}>موارد نیازمند پیگیری مالی، سپس نزدیک‌ترین پایان حفاظت. نمایش در این صف به معنی تأیید پرداخت یا تمدید مهلت نیست.</p>
-              </details>
-            </li>)}</ul>}
+            : <div className={styles.tableArea}><KoochTable className={styles.table} aria-label="رسیدهای در انتظار بررسی" role="table">
+              <KoochTableHeader><KoochTableRow>
+                {["رزرو / مهمان", "مبلغ", "وضعیت بررسی", "اقدام"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}
+              </KoochTableRow></KoochTableHeader>
+              {data.items.map(item => <tbody key={item.paymentId} className={styles.receipt} role="rowgroup">
+                <KoochTableRow className={styles.row} role="row">
+                  <KoochTableCell role="cell"><div className={styles.identity}>
+                    <bdi className="font-semibold">{item.reservationNumber}</bdi>
+                    <span>{item.guestName || "نام مهمان ثبت نشده"}</span>
+                  </div></KoochTableCell>
+                  <KoochTableCell className={styles.amount} role="cell"><strong>{formatCurrency(item.amount, { currencyLabel: item.currency === "IRR" ? "ریال" : item.currency })}</strong></KoochTableCell>
+                  <KoochTableCell role="cell"><div className={styles.reviewStatus}>
+                    <KoochBadge variant="muted">در انتظار بررسی</KoochBadge>
+                    <span className={states[item.reviewState].warning ? styles.warning : styles.protection}>{states[item.reviewState].label}</span>
+                  </div></KoochTableCell>
+                  <KoochTableCell role="cell"><div className={styles.actions}>
+                    <Link className={styles.review} aria-label={`بررسی پرداخت ${item.reservationNumber}`}
+                      href={reservationFinancialHref(item.reservationId, returnTo)}>بررسی پرداخت</Link>
+                    <KoochButton size="sm" variant="ghost" aria-expanded={expanded.has(item.paymentId)}
+                      aria-controls={`${detailsId}-${item.paymentId}`} aria-label={`جزئیات رسید ${item.reservationNumber}`}
+                      onClick={() => toggleDetails(item.paymentId)}>جزئیات</KoochButton>
+                  </div></KoochTableCell>
+                </KoochTableRow>
+                <tr className={styles.detailRow} hidden={!expanded.has(item.paymentId)} role="row">
+                  <KoochTableCell colSpan={4} role="cell"><div id={`${detailsId}-${item.paymentId}`}>
+                    <dl className={styles.metadata}>{[
+                      ["اقامتگاه", item.propertyName], ["روش پرداخت", methods[item.method] ?? item.method],
+                      ...(item.orderCode ? [["سفارش", item.orderCode]] : []),
+                      ["زمان ثبت رسید", item.createdAtUtc ? formatDateTime(item.createdAtUtc) : "نامشخص"],
+                      ["مهلت اصلی پرداخت", item.paymentExpiresAtUtc ? formatDateTime(item.paymentExpiresAtUtc) : "نامشخص"],
+                      ["پایان حفاظت بررسی", item.reviewProtectionExpiresAtUtc ? formatDateTime(item.reviewProtectionExpiresAtUtc) : "فاقد حفاظت معتبر"],
+                      ["وضعیت رزرو", statusLabels[item.reservationStatus] ?? (item.reservationStatus === "CapacityLost" ? "ظرفیت از دست رفته" : item.reservationStatus)],
+                    ].map(([label, value]) => <div key={label}><dt>{label}</dt><dd><bdi>{value}</bdi></dd></div>)}</dl>
+                  </div></KoochTableCell>
+                </tr>
+              </tbody>)}
+            </KoochTable>
+              <p className={styles.caption}>موارد نیازمند پیگیری مالی، سپس نزدیک‌ترین پایان حفاظت. نمایش در این صف به معنی تأیید پرداخت یا تمدید مهلت نیست.</p>
+            </div>}
           {data.totalPages > 1 && <nav aria-label="صفحه‌بندی صف بررسی" className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 text-xs">
             <span>صفحه {toPersianDigits(data.page)} · {toPersianDigits(data.totalCount)} رسید</span>
             <div className="flex gap-2"><KoochButton size="sm" variant="outline" disabled={page <= 1} onClick={() => changePage(page - 1)}>قبلی</KoochButton>
