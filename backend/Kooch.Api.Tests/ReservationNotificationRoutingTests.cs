@@ -349,6 +349,35 @@ public sealed class ReservationNotificationRoutingTests
         });
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AdminCreatedGuestRouting_UsesGuestAccountForExistingPendingAndTimeoutNotifications(bool linked)
+    {
+        await using var context = CreateContext();
+        SeedRecipients(context, includeAssignment: true);
+        context.Guests.Add(new Guest { Id = 40, UserId = linked ? 20 : null, FirstName = "Guest", LastName = "User" });
+        AddReservation(context, 20, ReservationStatus.PendingApproval, DateTime.UtcNow.AddMinutes(30));
+        var reservation = context.Reservations.Local.Single();
+        reservation.Source = ReservationSource.AdminCreated;
+        reservation.ClientId = 6;
+        reservation.CreatedByUserId = 6;
+        reservation.GuestId = 40;
+        await context.SaveChangesAsync();
+        var dispatcher = CreateDispatcher(context);
+        await dispatcher.NotifyPendingApprovalAsync([20]);
+        await dispatcher.NotifyPendingApprovalAsync([20]);
+        await dispatcher.NotifyOwnerApprovalTimeoutAsync(20);
+        await dispatcher.NotifyOwnerApprovalTimeoutAsync(20);
+        var guestLogs = await context.NotificationLogs.Where(log => log.RecipientGuestId == 40).ToListAsync();
+        if (!linked) Assert.Empty(guestLogs);
+        else
+        {
+            Assert.Equal(2, guestLogs.Count);
+            Assert.All(guestLogs, log => { Assert.Equal(20, log.RecipientUserId); Assert.Equal(NotificationChannel.InApp, log.Channels); });
+        }
+    }
+
     private static KoochDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<KoochDbContext>()

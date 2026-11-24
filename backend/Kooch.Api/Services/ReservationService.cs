@@ -485,8 +485,8 @@ public partial class ReservationService(
             if (reservation.Status == ReservationStatus.PendingApproval)
                 await notificationDispatcher.NotifyPendingApprovalAsync([reservation.Id], cancellationToken);
             else
-                await notificationService.SendAsync(CreateNotificationRequest(reservation, request, guest,
-                    onRequest[reservation.RoomTypeId]), cancellationToken);
+                await ReservationGuestNotifications.SendExistingAsync(dbContext, notificationService, reservation,
+                    CreateNotificationRequest(reservation, request, guest, onRequest[reservation.RoomTypeId]), cancellationToken);
         }
         await transaction.CommitAsync(cancellationToken);
         return new ManualBookingCreateResponse
@@ -1100,7 +1100,7 @@ public partial class ReservationService(
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.CancellationOutcome = await CancellationOutcomeAsync(reservationId, false, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await notificationService.SendAsync(
+        await ReservationGuestNotifications.SendExistingAsync(dbContext, notificationService, reservation,
             CreateReservationNotificationRequest(
                 reservation,
                 NotificationEventType.ReservationCancelled,
@@ -1414,11 +1414,9 @@ public partial class ReservationService(
             "System marked the unpaid reservation as payment expired.");
 
         await dbContext.SaveChangesAsync(cancellationToken);
-        await notificationService.SendAsync(
-            CreateReservationNotificationRequest(
-                reservation,
-                NotificationEventType.ReservationPaymentExpired,
-                $"Payment window expired for reservation {reservation.ReservationNumber}."),
+        await ReservationGuestNotifications.SendAsync(dbContext, notificationService, reservation,
+            NotificationEventType.ReservationPaymentExpired,
+            $"مهلت پرداخت رزرو {reservation.ReservationNumber} پایان یافت و این رزرو منقضی شد.",
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -1673,7 +1671,7 @@ public partial class ReservationService(
     {
         if (!notification.HasValue) return;
 
-        await notificationService.SendAsync(
+        await ReservationGuestNotifications.SendExistingAsync(dbContext, notificationService, reservation,
             CreateReservationNotificationRequest(
                 reservation,
                 notification.Value.EventType,

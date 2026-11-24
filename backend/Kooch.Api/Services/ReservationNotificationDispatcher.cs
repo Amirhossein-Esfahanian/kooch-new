@@ -40,9 +40,7 @@ public sealed class ReservationNotificationDispatcher(
                 cancellationToken);
             foreach (var reservation in propertyGroup)
             {
-                await notificationService.SendAsync(
-                    CreateGuestRequest(reservation, isTimeout: false),
-                    cancellationToken);
+                await SendGuestAsync(reservation, isTimeout: false, cancellationToken);
                 foreach (var recipient in recipients)
                 {
                     await notificationService.SendAsync(
@@ -61,9 +59,7 @@ public sealed class ReservationNotificationDispatcher(
         var recipients = await recipientResolver.ResolveAsync(
             reservation.PropertyId,
             cancellationToken);
-        await notificationService.SendAsync(
-            CreateGuestRequest(reservation, isTimeout: true),
-            cancellationToken);
+        await SendGuestAsync(reservation, isTimeout: true, cancellationToken);
         foreach (var recipient in recipients)
         {
             await notificationService.SendAsync(
@@ -144,6 +140,13 @@ public sealed class ReservationNotificationDispatcher(
         reservations.Count == 1
             ? reservations[0]
             : throw new KeyNotFoundException("Reservation not found.");
+
+    private async Task SendGuestAsync(ReservationNotificationSnapshot snapshot, bool isTimeout, CancellationToken ct)
+    {
+        var reservation = await dbContext.Reservations.AsNoTracking().SingleAsync(item => item.Id == snapshot.Id, ct);
+        await ReservationGuestNotifications.SendExistingAsync(dbContext, notificationService, reservation,
+            CreateGuestRequest(snapshot, isTimeout), ct);
+    }
 
     private static NotificationRequest CreateGuestRequest(
         ReservationNotificationSnapshot reservation,

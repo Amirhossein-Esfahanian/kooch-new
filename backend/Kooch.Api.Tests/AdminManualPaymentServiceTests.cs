@@ -413,6 +413,145 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Empty(await harness.DbContext.Reservations.ToListAsync());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GuestNotifications_ReviewTargetsLinkedGuestNotCreatingAdminAndDoesNotRepeat(bool approve)
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync();
+        var created = await harness.CreateManualPaymentAsync();
+        await LinkNotificationGuestAsync(harness.Context);
+        if (approve) await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
+        else await harness.Service.RejectAsync(created.PaymentId, new() { Reason = "مرجع نامعتبر" }, ManualPaymentHarness.AdminUserId);
+
+        harness.Context.ChangeTracker.Clear();
+        var log = Assert.Single(await harness.Context.NotificationLogs.ToListAsync());
+        Assert.Equal(2, log.RecipientUserId);
+        Assert.Equal(40, log.RecipientGuestId);
+        Assert.Equal(NotificationChannel.InApp, log.Channels);
+        Assert.Equal(approve ? NotificationEventType.ReservationConfirmed : NotificationEventType.ManualPaymentRejected, log.EventType);
+        Assert.Contains("KCH-MANUAL-10", log.Message);
+        Assert.Contains(approve ? "تأیید نهایی" : "رسید پرداخت", log.Message);
+        Assert.Null(log.Mobile);
+        Assert.Null(log.Email);
+        await Assert.ThrowsAsync<ManualPaymentReviewException>(async () =>
+        {
+            if (approve) await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
+            else await harness.Service.RejectAsync(created.PaymentId, new() { Reason = "تکرار" }, ManualPaymentHarness.AdminUserId);
+        });
+        Assert.Single(await harness.Context.NotificationLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task GuestNotifications_OrdinaryGuestCreatedReceiptStillTargetsClient()
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync();
+        var created = await harness.CreateManualPaymentAsync();
+        await LinkNotificationGuestAsync(harness.Context);
+        var reservation = await harness.Context.Reservations.SingleAsync();
+        reservation.Source = ReservationSource.Website;
+        reservation.ClientId = 2;
+        await harness.Context.SaveChangesAsync();
+        await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
+        Assert.Equal(2, (await harness.Context.NotificationLogs.SingleAsync()).RecipientUserId);
+    }
+
+    [Theory]
+    [InlineData(true, null, true, true)]
+    [InlineData(false, null, true, true)]
+    [InlineData(true, 2, false, true)]
+    [InlineData(true, 2, true, false)]
+    [InlineData(true, 1, true, true)]
+    public async Task GuestNotifications_MissingUnlinkedInactiveDeletedOrCreatorAccountIsNotNotified(
+        bool hasGuest, int? userId, bool active, bool userExists)
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync();
+        var created = await harness.CreateManualPaymentAsync();
+        await LinkNotificationGuestAsync(harness.Context);
+        var guest = await harness.Context.Guests.SingleAsync();
+        guest.UserId = userId;
+        var user = await harness.Context.Users.SingleAsync(user => user.Id == 2);
+        user.IsActive = active;
+        user.IsDeleted = !userExists;
+        if (!hasGuest) (await harness.Context.Reservations.SingleAsync()).GuestId = null;
+        await harness.Context.SaveChangesAsync();
+        await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
+        Assert.Empty(await harness.Context.NotificationLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task GuestNotifications_ApprovedReceiptWithoutCapacityDoesNotClaimConfirmation()
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync(hasCapacity: false);
+        var created = await harness.CreateManualPaymentAsync();
+        await LinkNotificationGuestAsync(harness.Context);
+        await harness.Service.ApproveAsync(created.PaymentId, ManualPaymentHarness.AdminUserId);
+        var log = await harness.Context.NotificationLogs.SingleAsync();
+        Assert.Equal(NotificationEventType.PaymentSuccessful, log.EventType);
+        Assert.Contains("تأیید نشده", log.Message);
+        Assert.Contains("CapacityLost", log.DataJson);
+    }
+
+    [Fact]
+    public async Task GuestNotifications_MixedOrderReviewIsPerReservationAndFailedApprovalSendsNothing()
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync();
+        var first = await harness.CreateManualPaymentAsync();
+        await LinkNotificationGuestAsync(harness.Context);
+        var reservation = await harness.Context.Reservations.SingleAsync();
+        var session = new BookingSession { Id = 90, SessionCode = "O-NOTIFICATION", ClientId = 1, PropertyId = 30, Currency = "IRR" };
+        harness.Context.BookingSessions.Add(session);
+        reservation.BookingSessionId = session.Id;
+        var sibling = new Reservation { Id = 11, ReservationNumber = "KCH-MANUAL-11", BookingSessionId = session.Id,
+            ClientId = 1, CreatedByUserId = 1, GuestId = 40, PropertyId = 30, RoomTypeId = 20, Source = ReservationSource.AdminCreated,
+            Status = ReservationStatus.ApprovedAwaitingPayment, PaymentExpiresAtUtc = DateTime.UtcNow.AddHours(1),
+            CheckInDate = reservation.CheckInDate, CheckOutDate = reservation.CheckOutDate, AdultCount = 1,
+            TotalPrice = 100m, FinalAmount = 100m, Currency = "IRR", CommissionType = CommissionType.Direct };
+        harness.Context.Reservations.Add(sibling);
+        await harness.Context.SaveChangesAsync();
+        var second = await harness.Service.CreateAsync(new() { ReservationId = sibling.Id, Amount = 100m, Currency = "IRR",
+            Method = ManualPaymentMethod.BankTransfer, PaymentDate = DateOnly.FromDateTime(DateTime.UtcNow) }, 1);
+        await harness.Service.ApproveAsync(first.PaymentId, 1);
+        await harness.Service.RejectAsync(second.PaymentId, new() { Reason = "نیازمند اصلاح" }, 1);
+        var logs = await harness.Context.NotificationLogs.ToListAsync();
+        Assert.Equal(2, logs.Count);
+        Assert.All(logs, log => Assert.Equal(2, log.RecipientUserId));
+        Assert.Equal(ReservationStatus.Confirmed, reservation.Status);
+        Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, sibling.Status);
+        Assert.Contains(logs, log => log.ReservationId == 10 && log.EventType == NotificationEventType.ReservationConfirmed);
+        Assert.Contains(logs, log => log.ReservationId == 11 && log.EventType == NotificationEventType.ManualPaymentRejected);
+
+        // Reviewing the rejected receipt again must not add a confirmation notification.
+        sibling.PaymentExpiresAtUtc = DateTime.UtcNow.AddDays(-2);
+        await harness.Context.SaveChangesAsync();
+        await Assert.ThrowsAsync<ManualPaymentReviewException>(() => harness.Service.ApproveAsync(second.PaymentId, 1));
+        Assert.Equal(2, await harness.Context.NotificationLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task GuestNotifications_FailedDeadlineGuardDoesNotEmitApprovalOrConfirmation()
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync();
+        var receipt = await harness.CreateManualPaymentAsync();
+        await LinkNotificationGuestAsync(harness.Context);
+        (await harness.Context.Reservations.SingleAsync()).PaymentExpiresAtUtc = DateTime.UtcNow.AddDays(-2);
+        await harness.Context.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<ManualPaymentReviewException>(() => harness.Service.ApproveAsync(receipt.PaymentId, 1));
+        Assert.Equal(ManualPaymentReviewException.DeadlineExpired, error.Code);
+        Assert.Empty(await harness.Context.NotificationLogs.ToListAsync());
+    }
+
+    private static async Task LinkNotificationGuestAsync(KoochDbContext context)
+    {
+        context.Users.Add(new User { Id = 2, FirstName = "Guest", LastName = "User", PasswordHash = "not-used", IsActive = true, Role = UserRole.Client });
+        context.Guests.Add(new Guest { Id = 40, UserId = 2, FirstName = "Guest", LastName = "User" });
+        var reservation = await context.Reservations.SingleAsync();
+        reservation.GuestId = 40;
+        reservation.Source = ReservationSource.AdminCreated;
+        reservation.CreatedByUserId = ManualPaymentHarness.AdminUserId;
+        await context.SaveChangesAsync();
+    }
+
     private sealed class ManualPaymentHarness : IAsyncDisposable
     {
         public const int AdminUserId = 1;

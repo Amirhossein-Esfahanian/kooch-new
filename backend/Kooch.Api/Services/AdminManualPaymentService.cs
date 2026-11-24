@@ -12,7 +12,8 @@ public sealed partial class AdminManualPaymentService(
     IPaymentFinancializationService paymentFinancializationService,
     IReservationVoucherService reservationVoucherService,
     IPermissionService? permissionService = null,
-    IPropertyAuthorizationService? propertyAuthorizationService = null)
+    IPropertyAuthorizationService? propertyAuthorizationService = null,
+    INotificationService? notificationService = null)
     : IAdminManualPaymentService
 {
     public AdminManualPaymentService(
@@ -239,6 +240,14 @@ public sealed partial class AdminManualPaymentService(
         await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
         await new ReservationActivityService(dbContext)
             .AppendPaymentConfirmedAsync(reservation.Id, actorUserId, cancellationToken);
+        await ReservationGuestNotifications.SendAsync(dbContext,
+            notificationService ?? new NotificationService(dbContext), reservation,
+            capacityExists ? NotificationEventType.ReservationConfirmed : NotificationEventType.PaymentSuccessful,
+            capacityExists
+                ? $"رسید پرداخت رزرو {reservation.ReservationNumber} تأیید شد و این رزرو تأیید نهایی شد."
+                : $"رسید پرداخت رزرو {reservation.ReservationNumber} تأیید شد، اما به دلیل نبود ظرفیت، این رزرو تأیید نشده و نیازمند پیگیری است.",
+            cancellationToken, payment.Id,
+            capacityExists ? null : $"payment:{payment.Id}:approved");
         await transaction.CommitAsync(cancellationToken);
         return ToResponse(payment, details, reservation, capacityExists);
     }
@@ -276,6 +285,11 @@ public sealed partial class AdminManualPaymentService(
         payment.UpdatedByUserId = actorUserId;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await ReservationGuestNotifications.SendAsync(dbContext,
+            notificationService ?? new NotificationService(dbContext), reservation,
+            NotificationEventType.ManualPaymentRejected,
+            $"رسید پرداخت رزرو {reservation.ReservationNumber} رد شد. دلیل: {reason} وضعیت رزرو با رد این رسید تغییری نکرده است.",
+            cancellationToken, payment.Id, $"payment:{payment.Id}:rejected");
         await transaction.CommitAsync(cancellationToken);
         return ToResponse(payment, details, reservation, capacityClaimed: false);
     }

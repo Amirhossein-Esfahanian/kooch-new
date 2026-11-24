@@ -204,7 +204,8 @@ public enum NotificationEventType
     ReservationApprovalReminder = 17,
     ReservationCancellationRequested = 18,
     AdminTaskAssigned = 19,
-    AdminAnnouncement = 20
+    AdminAnnouncement = 20,
+    ManualPaymentRejected = 21
 }
 [Flags]
 public enum NotificationChannel

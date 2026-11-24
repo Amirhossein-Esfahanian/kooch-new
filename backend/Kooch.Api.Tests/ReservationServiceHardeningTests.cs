@@ -365,6 +365,23 @@ public sealed class ReservationServiceHardeningTests
         Assert.Empty(await harness.DbContext.ReservationActivities.ToListAsync());
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GuestNotifications_ManualCreationUsesOnlyLinkedGuestAccount(bool linked)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        if (!linked) (await harness.DbContext.Guests.SingleAsync()).UserId = null;
+        await harness.DbContext.SaveChangesAsync();
+        await harness.Service.CreateAsync(new ReservationCreateRequest
+        {
+            PropertyId = 10, RoomTypeId = 20, RoomId = 30, GuestId = 40,
+            CheckInDate = harness.CheckIn, CheckOutDate = harness.CheckOut, Adults = 1
+        }, harness.SuperAdmin);
+        if (linked) Assert.Equal(3, Assert.Single(harness.Notifications.Requests).RecipientUserId);
+        else Assert.Empty(harness.Notifications.Requests);
+    }
+
     [Fact]
     public async Task Expiration_IsIdempotentAndReleasesHeldCapacity()
     {
@@ -380,6 +397,43 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(
             ReservationStatus.PaymentExpired,
             (await harness.DbContext.Reservations.FindAsync(reservation.Id))!.Status);
+        var notification = Assert.Single(harness.Notifications.Requests);
+        Assert.Equal(3, notification.RecipientUserId);
+        Assert.Equal(NotificationChannel.InApp, notification.Channels);
+        Assert.Equal(NotificationEventType.ReservationPaymentExpired, notification.EventType);
+        Assert.Contains(reservation.ReservationNumber!, notification.Message);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GuestNotifications_ExpirationWithoutLinkedAccountSkipsAdminAndBatchDoesNotRepeat(bool hasGuest)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var reservation = await harness.AddReservationAsync(ReservationStatus.ApprovedAwaitingPayment,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        if (hasGuest) (await harness.DbContext.Guests.SingleAsync()).UserId = null;
+        else reservation.GuestId = null;
+        await harness.DbContext.SaveChangesAsync();
+        Assert.Equal(1, await harness.Service.ExpireApprovedUnpaidReservationsAsync(100));
+        Assert.Equal(0, await harness.Service.ExpireApprovedUnpaidReservationsAsync(100));
+        Assert.Empty(harness.Notifications.Requests);
+    }
+
+    [Fact]
+    public async Task GuestNotifications_OrdinaryExpirationKeepsClientAndDoesNotNotifyConfirmedSibling()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var reservation = await harness.AddReservationAsync(ReservationStatus.ApprovedAwaitingPayment,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        reservation.Source = ReservationSource.Website;
+        reservation.ClientId = 3;
+        var sibling = await harness.AddReservationAsync(ReservationStatus.Confirmed, roomTypeId: 21, roomId: 31);
+        await harness.DbContext.SaveChangesAsync();
+        Assert.Equal(1, await harness.Service.ExpireApprovedUnpaidReservationsAsync(100));
+        Assert.Equal(0, await harness.Service.ExpireApprovedUnpaidReservationsAsync(100));
+        Assert.Equal(3, Assert.Single(harness.Notifications.Requests).RecipientUserId);
+        Assert.Equal(ReservationStatus.Confirmed, sibling.Status);
     }
 
     [Theory]
@@ -765,7 +819,7 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
                 : new StubReservationAvailabilityService(),
             pricing,
             new StubReservationNumberGenerator(),
-            new RecordingNotificationService(),
+            Notifications,
             new RecordingReservationNotificationDispatcher(),
             AuditLogService,
             permissions,
@@ -781,6 +835,7 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
     public (int UserId, UserRole Role) SuperAdmin => (1, UserRole.SuperAdmin);
     public KoochDbContext DbContext { get; }
     public RecordingAuditLogService AuditLogService { get; }
+    public RecordingNotificationService Notifications { get; } = new();
     public EffectiveAvailabilityService EffectiveAvailability { get; }
     public ReservationService Service { get; }
 
