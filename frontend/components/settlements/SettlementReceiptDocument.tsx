@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import type { AdminSettlementReceipt, PropertySettlementReceipt } from "@/lib/settlement-receipt";
 import { VoucherField } from "@/components/reservations/vouchers/VoucherDocument";
 import styles from "@/components/reservations/vouchers/VoucherDocument.module.css";
@@ -21,7 +21,8 @@ export function SettlementReceiptDocument({ receipt, admin = false }: {
 }) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
-  const amount = (value: number) => formatCurrency(value, { currencyLabel: receipt.currency });
+  const currencyLabel = useSiteCurrencyLabel();
+  const amount = (value: number) => formatCurrency(value, { currencyLabel });
   const adminReceipt = admin ? receipt as AdminSettlementReceipt : null;
   const document = (
     <article aria-label="رسید تسویه" className={`${styles.document} rounded-lg border border-border bg-card text-foreground`} dir="rtl">

@@ -35,8 +35,8 @@ describe("Settlement receipt", () => {
     expect(within(article).getByText("123-REF")).toBeTruthy();
     expect(within(article).getByText("یادداشت خصوصی")).toBeTruthy();
     expect(within(article).getByText("زمان ثبت در سیستم")).toBeTruthy();
-    expect(within(article).getAllByText(/XYZ/).length).toBeGreaterThan(0);
-    expect(within(article).queryByText(/تومان/)).toBeNull();
+    expect(within(article).getAllByText(/تومان/).length).toBeGreaterThan(0);
+    expect(within(article).queryByText(/XYZ/)).toBeNull();
   });
 
   it("uses the Property endpoint and excludes Admin-only fields", async () => {

@@ -16,7 +16,7 @@ import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
 import { AccountSkeleton } from "@/components/account/AccountSkeleton";
 import { formatDateTime, formatNumber } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { apiRequest } from "@/lib/owner-api";
 import styles from "./page.module.css";
 
@@ -36,7 +36,6 @@ const statusLabels: Record<WithdrawalStatus, string> = {
   Cancelled: "لغوشده",
 };
 const errorText = (error: unknown) => error instanceof Error ? error.message : "درخواست انجام نشد؛ دوباره تلاش کنید.";
-const currencyLabel = (currency: string) => currency === "IRR" ? "ریال" : currency;
 
 function WalletSkeleton({ kind }: { kind: "balance" | "transactions" | "withdrawals" }) {
   const label = kind === "balance" ? "در حال بارگذاری موجودی..." : kind === "transactions" ? "در حال بارگذاری تراکنش‌ها..." : "در حال بارگذاری درخواست‌ها...";
@@ -54,6 +53,7 @@ function WalletSkeleton({ kind }: { kind: "balance" | "transactions" | "withdraw
 }
 
 export default function AccountWalletPage() {
+  const currencyLabel = useSiteCurrencyLabel();
   const router = useRouter();
   const session = useAuthSession();
   const hasAccountWorkspace = session.workspaces.includes("account");
@@ -213,7 +213,7 @@ export default function AccountWalletPage() {
     return <div role="status" className="grid min-h-[50vh] place-items-center px-5 text-sm font-semibold text-muted-foreground">در حال آماده‌سازی کیف پول...</div>;
   }
 
-  const money = (amount: number, currency: string) => <>{formatCurrency(amount, { showCurrency: false })} <bdi dir={currency === "IRR" ? "rtl" : "ltr"}>{currencyLabel(currency)}</bdi></>;
+  const money = (amount: number) => <>{formatCurrency(amount, { showCurrency: false })} <bdi dir="auto">{currencyLabel}</bdi></>;
   return <main className={styles.page} dir="rtl">
       <header className={styles.header}><h1>کیف پول من</h1>
         <p>موجودی‌های قابل استفاده و درخواست‌های برداشت خود را پیگیری کنید.</p>
@@ -228,13 +228,13 @@ export default function AccountWalletPage() {
         <div className={styles.primaryBalance}>
           <div>
             <h2>موجودی قابل استفاده</h2>
-            <p className={styles.mainAmount}>{money(balance.balance, balance.currency)}</p>
+            <p className={styles.mainAmount}>{money(balance.balance)}</p>
           </div>
           {balance.withdrawableBalance > 0 && <KoochButton disabled={balanceLoading} onClick={openRequest}>درخواست برداشت</KoochButton>}
         </div>
         <div className={styles.secondaryBalances}>
-          <div><h3>قابل برداشت</h3><p>{money(balance.withdrawableBalance, balance.currency)}</p></div>
-          <div><h3>اعتبار غیرقابل برداشت</h3><p>{money(balance.nonWithdrawableBalance, balance.currency)}</p></div>
+          <div><h3>قابل برداشت</h3><p>{money(balance.withdrawableBalance)}</p></div>
+          <div><h3>اعتبار غیرقابل برداشت</h3><p>{money(balance.nonWithdrawableBalance)}</p></div>
         </div>
       </KoochCard>}
 
@@ -253,7 +253,7 @@ export default function AccountWalletPage() {
           <KoochTableBody>
             {transactions.map(item => <KoochTableRow key={item.id}>
                 <KoochTableCell><KoochBadge variant={item.direction === "Credit" ? "success" : "destructive"}>{item.direction === "Credit" ? "افزایش موجودی" : "کاهش موجودی"}</KoochBadge></KoochTableCell>
-                <KoochTableCell className="tabular-nums">{money(item.amount, item.currency)}</KoochTableCell>
+                <KoochTableCell className="tabular-nums">{money(item.amount)}</KoochTableCell>
                 <KoochTableCell><time dateTime={item.createdAtUtc}>{formatDateTime(item.createdAtUtc)}</time></KoochTableCell>
               </KoochTableRow>)}
           </KoochTableBody>
@@ -272,7 +272,7 @@ export default function AccountWalletPage() {
           <KoochTableHeader><KoochTableRow><KoochTableHead>مبلغ</KoochTableHead><KoochTableHead>واحد پول</KoochTableHead><KoochTableHead>وضعیت</KoochTableHead><KoochTableHead>زمان درخواست</KoochTableHead></KoochTableRow></KoochTableHeader>
           <KoochTableBody>
             {history.items.map(item =>
-              <KoochTableRow key={item.id}><KoochTableCell className="tabular-nums">{formatCurrency(item.amount, { showCurrency: false })}</KoochTableCell><KoochTableCell><bdi dir={item.currency === "IRR" ? "rtl" : "ltr"}>{currencyLabel(item.currency)}</bdi></KoochTableCell><KoochTableCell><KoochBadge variant="muted">{statusLabels[item.status]}</KoochBadge></KoochTableCell><KoochTableCell><time dateTime={item.requestedAtUtc}>{formatDateTime(item.requestedAtUtc)}</time></KoochTableCell></KoochTableRow>)}
+              <KoochTableRow key={item.id}><KoochTableCell className="tabular-nums">{formatCurrency(item.amount, { showCurrency: false })}</KoochTableCell><KoochTableCell><bdi dir="auto">{currencyLabel}</bdi></KoochTableCell><KoochTableCell><KoochBadge variant="muted">{statusLabels[item.status]}</KoochBadge></KoochTableCell><KoochTableCell><time dateTime={item.requestedAtUtc}>{formatDateTime(item.requestedAtUtc)}</time></KoochTableCell></KoochTableRow>)}
           </KoochTableBody>
         </KoochTable>}
         {(history?.totalPages ?? 0) > 1 && <nav aria-label="صفحه‌بندی درخواست‌های برداشت" className="flex flex-wrap items-center justify-end gap-2">
@@ -285,11 +285,11 @@ export default function AccountWalletPage() {
     <KoochDialog open={dialogOpen} onOpenChange={open => { if (!form.formState.isSubmitting) setDialogOpen(open); }} title="درخواست برداشت" size="sm" closeDisabled={form.formState.isSubmitting}
       footer={<div className="flex justify-end gap-2"><KoochButton variant="outline" disabled={form.formState.isSubmitting} onClick={() => setDialogOpen(false)}>انصراف</KoochButton><KoochButton form="wallet-withdrawal-form" type="submit" loading={form.formState.isSubmitting} disabled={!balance || balanceLoading}>ثبت درخواست</KoochButton></div>}>
       <form id="wallet-withdrawal-form" onSubmit={submitRequest} className="grid gap-4">
-        <p className="text-sm text-muted-foreground">موجودی قابل برداشت: <strong className="text-foreground">{balance ? money(balance.withdrawableBalance, balance.currency) : "نامشخص"}</strong></p>
+        <p className="text-sm text-muted-foreground">موجودی قابل برداشت: <strong className="text-foreground">{balance ? money(balance.withdrawableBalance) : "نامشخص"}</strong></p>
         <KoochField label="مبلغ درخواستی" required error={form.formState.errors.amount?.message}>
           <KoochInput type="number" inputMode="decimal" min="0" step="0.01" {...form.register("amount", { valueAsNumber: true })} />
         </KoochField>
-        <p className="text-xs text-muted-foreground">واحد پول: <bdi dir={balance?.currency === "IRR" ? "rtl" : "ltr"}>{balance ? currencyLabel(balance.currency) : ""}</bdi></p>
+        <p className="text-xs text-muted-foreground">واحد پول: <bdi dir="auto">{balance ? currencyLabel : ""}</bdi></p>
         {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
       </form>
     </KoochDialog>

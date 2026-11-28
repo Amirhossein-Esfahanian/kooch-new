@@ -205,6 +205,7 @@ export interface ReservationTableItem {
   payableAmount?: number | null;
   remainingAmount?: number | null;
   currency?: string | null;
+  currencyLabel?: string | null;
   paymentExpiresAtUtc?: string | null;
   isPaymentExpired?: boolean | null;
   remainingPaymentSeconds?: number | null;
@@ -297,7 +298,7 @@ export function ReservationTable({
 }: ReservationTableProps) {
   const currencyLabel = useSiteCurrencyLabel();
   const showProperty = context === "admin";
-  const showRowCurrency = showProperty && reservations.some(item => item.source === "AdminCreated" && item.currency);
+  const showRowCurrency = reservations.some(item => item.currencyLabel?.trim());
   const colSpan = (showProperty ? 10 : 9) - (detailsHref ? 1 : 0);
   const hasPrevious = currentPage > 1;
   const hasNext = totalPages > currentPage;
@@ -335,9 +336,7 @@ export function ReservationTable({
                 reservation.roomTypeName ?? reservation.roomName ?? "-";
               const totalPrice =
                 reservation.finalAmount ?? reservation.totalPrice ?? null;
-              const rowCurrencyLabel = showRowCurrency && reservation.source === "AdminCreated" && reservation.currency
-                ? reservation.currency === "IRR" ? "ریال" : reservation.currency
-                : currencyLabel;
+              const rowCurrencyLabel = reservation.currencyLabel?.trim() || currencyLabel;
               return (
                 <KoochTableRow key={rowKey(reservation)}>
                   <KoochTableCell className="font-semibold text-xs">

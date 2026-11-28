@@ -35,6 +35,8 @@ public class Reservation : BaseEntity
     public decimal ManualAdjustment { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = "IRR";
+    // Immutable display title captured from pricing.currencyLabel, independent of the financial code.
+    public string? CurrencyLabel { get; set; }
     public CommissionType CommissionType { get; set; } = CommissionType.Direct;
     public ReservationStatus Status { get; set; }
     public ReservationSource Source { get; set; }

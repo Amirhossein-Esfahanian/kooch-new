@@ -30,7 +30,7 @@ describe("pending manual receipt queue", () => {
     fireEvent.click(disclosure);
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(document.getElementById(disclosure.getAttribute("aria-controls")!)?.closest("tr")?.hidden).toBe(false);
-    expect(screen.getByText("O-12")).toBeTruthy(); expect(screen.getByText(/۵٬۰۰۰٬۰۰۰ ریال/)).toBeTruthy();
+    expect(screen.getByText("O-12")).toBeTruthy(); expect(screen.getByText(/۵٬۰۰۰٬۰۰۰ تومان/)).toBeTruthy();
     for (const label of ["زمان ثبت رسید", "مهلت اصلی پرداخت", "پایان حفاظت بررسی", "وضعیت رزرو"]) expect(screen.getByText(label)).toBeTruthy();
     expect(mocks.request).toHaveBeenCalledWith("/admin/manual-payments/pending?page=1&pageSize=20&propertyId=3", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(screen.queryByRole("button", { name: "تأیید پرداخت" })).toBeNull();

@@ -73,8 +73,8 @@ describe("Admin Guest wallet summary", () => {
     const dialog = await openWallet();
     expect(await within(dialog).findByText("افزایش موجودی")).not.toBeNull();
     expect(within(dialog).getByText("کاهش موجودی")).not.toBeNull();
-    expect(within(dialog).getByText((text) => text.startsWith("+") && text.endsWith("IRR"))).not.toBeNull();
-    expect(within(dialog).getByText((text) => text.startsWith("−") && text.endsWith("IRR"))).not.toBeNull();
+    expect(within(dialog).getByText((text) => text.startsWith("+") && text.endsWith("تومان"))).not.toBeNull();
+    expect(within(dialog).getByText((text) => text.startsWith("−") && text.endsWith("تومان"))).not.toBeNull();
     expect(within(dialog).getByText("هنوز تراکنشی در این کیف پول ثبت نشده است.")).not.toBeNull();
     expect(mocks.api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/transactions?currency=IRR&page=1&pageSize=5");
     expect(mocks.api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/transactions?currency=USD&page=1&pageSize=5");
@@ -89,8 +89,9 @@ describe("Admin Guest wallet summary", () => {
     expect(within(dialog).getAllByText("غیرقابل برداشت")).toHaveLength(2);
     expect(within(dialog).getAllByText("در نگه‌داشت")).toHaveLength(2);
     expect(within(dialog).getAllByText("قابل استفاده")).toHaveLength(2);
-    expect(within(dialog).getAllByText("IRR").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("USD").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("تومان").length).toBeGreaterThan(0);
+    expect(within(dialog).queryByText("IRR")).toBeNull();
+    expect(within(dialog).queryByText("USD")).toBeNull();
     expect(within(dialog).getByRole("button", { name: "ثبت درخواست برداشت" })).not.toBeNull();
     expect(within(dialog).queryByRole("button", { name: /اعتبار|واریز/ })).toBeNull();
   });

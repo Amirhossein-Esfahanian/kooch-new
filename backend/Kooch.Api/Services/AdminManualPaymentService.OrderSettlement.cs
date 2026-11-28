@@ -23,6 +23,7 @@ public sealed partial class AdminManualPaymentService
         return new ManualOrderBalanceResponse
         {
             BookingSessionId = session.Id, SessionCode = session.SessionCode, Currency = session.Currency,
+            CurrencyLabel = session.CurrencyLabel,
             TotalAmount = reservations.Sum(reservation => reservation.FinalAmount),
             RemainingAmount = balances.Values.Sum(), CanSettle = reason is null, UnavailableReason = reason,
             ReservationCount = reservations.Count,
@@ -84,7 +85,7 @@ public sealed partial class AdminManualPaymentService
                     existing.RequestHash != hash)
                     throw new InvalidOperationException("این شناسهٔ تسویه قبلاً با اطلاعات دیگری استفاده شده است.");
                 await transaction.CommitAsync(cancellationToken);
-                return SettlementResponse(existing, true);
+                return SettlementResponse(existing, true, session.CurrencyLabel);
             }
             var now = DateTime.UtcNow;
             var balances = await ReadRemainingBalancesAsync(reservations, cancellationToken);
@@ -114,7 +115,7 @@ public sealed partial class AdminManualPaymentService
             foreach (var reservation in payable)
                 await new ReservationActivityService(dbContext).AppendPaymentConfirmedAsync(reservation.Id, actorUserId, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
-            return SettlementResponse(payment, false);
+            return SettlementResponse(payment, false, session.CurrencyLabel);
         }
         catch
         {
@@ -297,10 +298,10 @@ public sealed partial class AdminManualPaymentService
         return null;
     }
 
-    private static ManualOrderSettlementResponse SettlementResponse(Payment payment, bool replay) => new()
+    private static ManualOrderSettlementResponse SettlementResponse(Payment payment, bool replay, string? currencyLabel) => new()
     {
         PaymentId = payment.Id, BookingSessionId = payment.BookingSessionId!.Value,
-        Amount = payment.Amount, Currency = payment.Currency, IsReplay = replay,
+        Amount = payment.Amount, Currency = payment.Currency, CurrencyLabel = currencyLabel, IsReplay = replay,
         Allocations = payment.Items.OrderBy(item => item.ReservationId)
             .Select(item => new ManualOrderAllocationResponse(item.ReservationId, item.AllocatedAmount)).ToArray()
     };

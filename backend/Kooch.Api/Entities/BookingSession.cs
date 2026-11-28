@@ -15,6 +15,8 @@ public class BookingSession : BaseEntity
     public DateTime? TravelerSnapshotCapturedAtUtc { get; set; }
     public int PropertyId { get; set; }
     public string Currency { get; set; } = string.Empty;
+    // Immutable display title captured once for this booking submission.
+    public string? CurrencyLabel { get; set; }
     public CommissionType? CommissionType { get; set; }
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }

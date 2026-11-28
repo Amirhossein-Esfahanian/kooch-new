@@ -28,8 +28,8 @@ interface VoucherStay {
   childCount: number;
 }
 
-export function voucherMoney(value: number, currency: string) {
-  return formatCurrency(value, { currencyLabel: currency === "IRR" ? "ریال" : currency });
+export function voucherMoney(value: number, currencyLabel: string) {
+  return formatCurrency(value, { currencyLabel });
 }
 
 export function VoucherField({ label, children, prominent = false }: {

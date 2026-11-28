@@ -164,6 +164,7 @@ public sealed class BookingSessionCreateResult
     public int ClientId { get; set; }
     public int? GuestId { get; set; }
     public int PropertyId { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public IReadOnlyList<BookingSessionReservationResult> Reservations { get; set; } = [];
 }
@@ -173,6 +174,7 @@ public sealed class AccountBookingSessionCreateResponse
     public int BookingSessionId { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     public int PropertyId { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public IReadOnlyList<BookingSessionReservationResult> Reservations { get; set; } = [];
 }
@@ -190,5 +192,6 @@ public sealed class BookingSessionReservationResult
     public DateOnly CheckOutDate { get; set; }
     public ReservationStatus Status { get; set; }
     public decimal FinalAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
 }

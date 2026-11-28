@@ -102,7 +102,7 @@ type GuestCashbackSummary = {
 
 type GuestCashbackResponse = { cashback: GuestCashbackSummary | null };
 
-function ReservationCashbackSection({ reservationNumber }: { reservationNumber: string }) {
+function ReservationCashbackSection({ reservationNumber, currencyLabel }: { reservationNumber: string; currencyLabel: string }) {
   const [cashback, setCashback] = useState<GuestCashbackSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -147,7 +147,7 @@ function ReservationCashbackSection({ reservationNumber }: { reservationNumber: 
                 ? "اضافه‌شده به کیف پول" : "لغوشده / اعطا نشده"}
             </KoochBadge>
             <span className="font-bold tabular-nums text-foreground">
-              {formatCurrency(cashback.amount, { showCurrency: false })} <bdi dir="ltr">{cashback.currency}</bdi>
+              {formatCurrency(cashback.amount, { showCurrency: false })} <span>{currencyLabel}</span>
             </span>
           </div>
           {cashback.status === "Pending" && <>
@@ -173,7 +173,7 @@ function ReservationCashbackSection({ reservationNumber }: { reservationNumber: 
 }
 
 export default function AccountReservationDetailsPage() {
-  const currencyLabel = useSiteCurrencyLabel();
+  const siteCurrencyLabel = useSiteCurrencyLabel();
   const router = useRouter();
   const session = useAuthSession();
   const { authenticated, loading: sessionLoading, workspaces } = session;
@@ -184,6 +184,7 @@ export default function AccountReservationDetailsPage() {
   const [reservation, setReservation] = useState<AccountReservation | null>(
     null,
   );
+  const currencyLabel = reservation?.currencyLabel?.trim() || siteCurrencyLabel;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [cancellationRequest, setCancellationRequest] = useState<AccountCancellationRequest | null>(null);
@@ -548,7 +549,7 @@ export default function AccountReservationDetailsPage() {
             </DetailSection>
 
             {reservation.reservationNumber === reservationNumber &&
-              <ReservationCashbackSection key={reservationNumber} reservationNumber={reservationNumber} />}
+              <ReservationCashbackSection key={reservationNumber} reservationNumber={reservationNumber} currencyLabel={currencyLabel} />}
 
             <DetailSection title="پرداخت">
               <DetailItem

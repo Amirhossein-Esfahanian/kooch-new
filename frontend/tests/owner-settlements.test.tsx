@@ -45,13 +45,13 @@ describe("Owner settlement history", () => {
     expect(api).not.toHaveBeenCalled();
   });
 
-  it("renders S references, persisted currency, statuses and only capable receipt links", async () => {
+  it("renders S references, configured display title, statuses and only capable receipt links", async () => {
     render(<Page />);
     expect(await screen.findByRole("table", { name: "سوابق تسویه" })).toBeTruthy();
     expect(api).toHaveBeenCalledWith("/owner/properties/8/settlements?page=1&pageSize=20");
     expect(screen.getByText("S-583214")).toBeTruthy();
     expect(screen.getByText("S-271946")).toBeTruthy();
-    expect(screen.getAllByText(/XYZ/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/تومان/).length).toBeGreaterThan(0);
     expect(screen.getByText("در انتظار سررسید")).toBeTruthy();
     const links = screen.getAllByRole("link", { name: "مشاهده رسید" });
     expect(links).toHaveLength(1);

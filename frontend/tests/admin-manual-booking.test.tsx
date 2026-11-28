@@ -12,7 +12,7 @@ vi.mock("@/lib/owner-api", async importOriginal => ({
 }));
 vi.mock("sonner", () => ({ toast: { error: mocks.error, success: mocks.success, warning: mocks.warning } }));
 vi.mock("@/lib/currency", async importOriginal => ({
-  ...await importOriginal<typeof import("@/lib/currency")>(), useSiteCurrencyLabel: () => "تومان",
+  ...await importOriginal<typeof import("@/lib/currency")>(), useSiteCurrencyLabel: (snapshot?: string | null) => snapshot || "تومان",
 }));
 vi.mock("@/components/KoochDatePicker", () => ({ KoochDatePicker: ({ onChange }: {
   onChange: (value: { startDate: string; endDate: string }) => void;
@@ -232,7 +232,7 @@ it("changing the requested room total clears stale allocations and requires a ma
   expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-it("keeps API currency and amounts consistent from preview through creation and settlement despite a toman site label", async () => {
+it("keeps numeric amounts and internal codes unchanged while using the configured display title across preview and settlement", async () => {
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
     if (path === "/admin/manual-payments/orders/15") return { sessionCode: "O-123456", currency: "IRR",
@@ -246,18 +246,18 @@ it("keeps API currency and amounts consistent from preview through creation and 
     return result;
   });
   await openStay(); await selectRooms();
-  expect(screen.getByText(/مبلغ کل:/).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
-  expect(screen.getByText(/قیمت پایه:/).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
-  expect(screen.queryByText(/تومان/)).toBeNull();
+  expect(screen.getByText(/مبلغ کل:/).textContent).toContain("۵٬۰۰۰٬۰۰۰ تومان");
+  expect(screen.getByText(/قیمت پایه:/).textContent).toContain("۵٬۰۰۰٬۰۰۰ تومان");
+  expect(screen.queryByText(/IRR/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  expect(screen.getByText("۵٬۰۰۰٬۰۰۰ ریال")).toBeTruthy();
+  expect(screen.getByText("۵٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" }));
   const result = await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
-  expect(within(result).getByText(/مبلغ کل سفارش/).parentElement?.textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
+  expect(within(result).getByText(/مبلغ کل سفارش/).parentElement?.textContent).toContain("۵٬۰۰۰٬۰۰۰ تومان");
   fireEvent.click(within(result).getByText("بستن"));
   render(<ManualOrderSettlement bookingSessionId={15} onSettled={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "ثبت تسویهٔ کل سفارش" }));
-  expect((await screen.findByText(/کل مانده:/)).textContent).toContain("۵٬۰۰۰٬۰۰۰ ریال");
+  expect((await screen.findByText(/کل مانده:/)).textContent).toContain("۵٬۰۰۰٬۰۰۰ تومان");
   fireEvent.click(await screen.findByRole("button", { name: "تأیید دریافت کل مانده و ثبت تسویه" }));
   await waitFor(() => expect(mocks.api.mock.calls.some(([path]) => path.endsWith("/15/settle"))).toBe(true));
   const receipt = mocks.api.mock.calls.find(([path]) => path.endsWith("/15/settle"))!;
@@ -293,7 +293,7 @@ it("reviews localized dates with click-only mode information instead of a read-o
   fireEvent.click(info, { detail: 0 }); // Native keyboard activation produces a zero-detail click.
   expect(screen.getByRole("note")).toBeTruthy();
   expect(screen.getByRole("button", { name: "ثبت رزرو بدون دریافت وجه" })).toBeTruthy();
-  expect(within(review).getByText("مبلغ کل سفارش").parentElement!.textContent).toContain("۶۰۰ ریال");
+  expect(within(review).getByText("مبلغ کل سفارش").parentElement!.textContent).toContain("۶۰۰ تومان");
   fireEvent.change(screen.getByLabelText("یادداشت داخلی"), { target: { value: "یادداشت محفوظ" } });
   fireEvent.click(screen.getByRole("radio", { name: "ثبت دریافت کامل و تأیید رزرو" }));
   expect(screen.getByRole("button", { name: "ثبت دریافت کامل و تأیید رزرو" })).toBeTruthy();
@@ -413,21 +413,21 @@ it("requires a new review after a stale price or currency response without recor
   expect(await screen.findByRole("heading", { name: "اتاق‌های قابل رزرو" })).toBeTruthy();
   await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
-  expect(screen.getByText("۶۶۰ ریال")).toBeTruthy();
+  expect(screen.getByText("۶۶۰ تومان")).toBeTruthy();
   expect((screen.getByRole("radio", { name: "ثبت رزرو بدون دریافت وجه" }) as HTMLInputElement).checked).toBe(true);
   expect(mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations")).toHaveLength(1);
 });
 
-it.each(["IRR", "USD"])("uses the stored currency in manual reservation amount details without converting it: %s", async currency => {
+it.each(["IRR", "USD"])("uses the saved display title without changing the amount or internal code: %s", async currency => {
   render(<ReservationDetailsDialog open onOpenChange={vi.fn()} reservation={{
     id: 50, reservationNumber: "R-100000", propertyId: 10, propertyName: "اقامتگاه آزمون",
-    source: "AdminCreated", currency, status: "Pending", checkInDate: "2035-02-01", checkOutDate: "2035-02-03",
+    source: "AdminCreated", currency, currencyLabel: "عنوان رزرو", status: "Pending", checkInDate: "2035-02-01", checkOutDate: "2035-02-03",
     finalAmount: 5_000_000, remainingAmount: 5_000_000, allowedStatusTransitions: [],
   }} />);
   await screen.findByRole("dialog", { name: "جزئیات رزرو" });
   const finance = screen.getByRole("heading", { name: "مالی" }).closest("section")!;
   expect(within(finance).getByText("مبلغ نهایی").parentElement?.textContent)
-    .toContain(`۵٬۰۰۰٬۰۰۰ ${currency === "IRR" ? "ریال" : currency}`);
+    .toContain("۵٬۰۰۰٬۰۰۰ عنوان رزرو");
   expect(within(finance).queryByText(/تومان/)).toBeNull();
 });
 
@@ -934,9 +934,9 @@ it.each([true, false, undefined])("shows per-reservation next steps only with ex
   rows.forEach((row, index) => {
     expect(within(row).getByRole("link", { name: `مشاهده جزئیات رزرو R-${100000 + index}` }).getAttribute("href"))
       .toBe(`/admin/reservations/${50 + index}`);
-    expect(row.textContent).toContain("۲۰۰ ریال");
+    expect(row.textContent).toContain("۲۰۰ تومان");
   });
-  expect(within(result).getByText("مبلغ کل سفارش").parentElement?.textContent).toContain("۶۰۰ ریال");
+  expect(within(result).getByText("مبلغ کل سفارش").parentElement?.textContent).toContain("۶۰۰ تومان");
   expect(within(result).getByText("بستن").closest("button")).toBeTruthy();
 });
 

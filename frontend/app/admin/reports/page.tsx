@@ -13,6 +13,7 @@ import { KoochField, KoochMultiSelect, KoochSelect } from "@/components/KoochFor
 import { KoochTable, KoochTableHeader, KoochTableHead, KoochTableBody, KoochTableRow, KoochTableCell } from "@/components/KoochTable";
 import { AdminReportChart } from "@/components/admin/AdminReportChart";
 import { apiRequest } from "@/lib/owner-api";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import { statusLabels } from "@/lib/account-reservations";
 import {
   buildAdminReservationReportPath,
@@ -47,7 +48,7 @@ const emptyFilters: AdminReservationReportFilters = {
 const number = (value: number) => value.toLocaleString("fa-IR");
 const amount = (value: number) => value.toLocaleString("fa-IR", { maximumFractionDigits: 20 });
 const date = (value: string) => new Intl.DateTimeFormat("fa-IR", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(`${value}T00:00:00Z`));
-const currency = (value: string | null) => value === "IRR" ? "ریال" : value;
+
 type ReportView = "chart" | "table";
 
 function ReportViewSwitch({
@@ -94,6 +95,8 @@ export default function AdminReportsPage() {
 }
 
 function ReservationReport() {
+  const currencyLabel = useSiteCurrencyLabel();
+  const currency = (value: string | null) => value ? currencyLabel : null;
   const [draft, setDraft] = useState(emptyFilters);
   const [applied, setApplied] = useState(emptyFilters);
   const [report, setReport] = useState<AdminReservationReport | null>(null);

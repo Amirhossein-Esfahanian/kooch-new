@@ -33,6 +33,7 @@ interface PaymentPreparationResponse {
   paidAmount: number;
   remainingAmount: number;
   currency: string;
+  currencyLabel?: string | null;
   paymentExpiresAtUtc?: string | null;
   remainingPaymentSeconds?: number | null;
   placeholderMessage: string;
@@ -56,13 +57,14 @@ function buildBackendPath(
 }
 
 export default function ReservationPaymentPage() {
-  const currencyLabel = useSiteCurrencyLabel();
+  const siteCurrencyLabel = useSiteCurrencyLabel();
   const reservationNumber = decodeURIComponent(
     useParams<{ reservationNumber: string }>().reservationNumber,
   );
   const token = useSearchParams().get("token") ?? "";
   const [preparation, setPreparation] =
     useState<PaymentPreparationResponse | null>(null);
+  const currencyLabel = preparation?.currencyLabel?.trim() || siteCurrencyLabel;
   const [loading, setLoading] = useState(true);
   const [continuing, setContinuing] = useState(false);
   const [error, setError] = useState("");

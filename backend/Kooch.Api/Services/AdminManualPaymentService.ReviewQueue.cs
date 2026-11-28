@@ -51,6 +51,7 @@ public sealed partial class AdminManualPaymentService
                 PropertyId = x.Payment.Reservation.PropertyId, PropertyName = x.Payment.Reservation.Property.Name,
                 GuestName = x.Payment.Reservation.Guest == null ? string.Empty :
                     (x.Payment.Reservation.Guest.FirstName + " " + x.Payment.Reservation.Guest.LastName).Trim(),
+                CurrencyLabel = x.Payment.Reservation.CurrencyLabel,
                 Amount = x.Payment.Amount, Currency = x.Payment.Currency, Method = x.Payment.ManualDetails!.Method,
                 CreatedAtUtc = x.Payment.CreatedAtUtc, PaymentExpiresAtUtc = x.Payment.Reservation.PaymentExpiresAtUtc,
                 ReviewProtectionExpiresAtUtc = x.Expiry, ReservationStatus = x.Payment.Reservation.Status,

@@ -33,9 +33,10 @@ export function BookingPaymentResult({
 }) {
   const router = useRouter();
   const auth = useAuthSession();
-  const currencyLabel = useSiteCurrencyLabel();
+  const siteCurrencyLabel = useSiteCurrencyLabel();
   const [loadedSession, setSession] = useState<AccountBookingSession | null>(null);
   const session = loadedSession && (!directProperty || isDirectSessionForProperty(loadedSession, sessionCode, directProperty)) ? loadedSession : null;
+  const currencyLabel = session?.currencyLabel?.trim() || siteCurrencyLabel;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 

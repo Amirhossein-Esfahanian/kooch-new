@@ -62,9 +62,9 @@ describe("Admin reservation count reports", () => {
     expect(within(summary).getByText("۱۲")).toBeTruthy();
     expect(within(summary).getByText("۵")).toBeTruthy();
     expect(within(summary).getByRole("heading", { name: "ارزش رزروها" })).toBeTruthy();
-    expect(within(summary).getByText("۱۲٬۵۰۰٬۰۰۰٫۷۵ ریال")).toBeTruthy();
+    expect(within(summary).getByText("۱۲٬۵۰۰٬۰۰۰٫۷۵ تومان")).toBeTruthy();
     expect(within(summary).getByRole("heading", { name: "مبلغ وصول‌شده" })).toBeTruthy();
-    expect(within(summary).getByText("۸٬۲۵۰٬۰۰۰٫۵ ریال")).toBeTruthy();
+    expect(within(summary).getByText("۸٬۲۵۰٬۰۰۰٫۵ تومان")).toBeTruthy();
     expect(within(summary).getByRole("button", { name: "نمایش توضیح" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "نمودار روند ایجاد رزروها" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "نمودار تفکیک اقامتگاه" })).toBeTruthy();

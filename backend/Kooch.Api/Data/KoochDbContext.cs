@@ -382,6 +382,11 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     private void EnsureFinancialHistoryIsAppendOnly()
     {
         EnsureWalletHistoryIsImmutable();
+        foreach (var entry in ChangeTracker.Entries<BookingSession>().Where(entry => entry.State == EntityState.Modified))
+        {
+            if (entry.Property(session => session.CurrencyLabel).IsModified)
+                throw new InvalidOperationException("Booking currency display titles are immutable after creation.");
+        }
         foreach (var entry in ChangeTracker.Entries<ReservationCashbackEntitlement>())
         {
             var granting = entry.State == EntityState.Modified &&
@@ -453,6 +458,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 throw new InvalidOperationException("Reservation cancellation idempotency key and fingerprint must be a valid pair.");
 
             if (entry.State != EntityState.Modified) continue;
+            if (entry.Property(reservation => reservation.CurrencyLabel).IsModified)
+                throw new InvalidOperationException("Reservation currency display titles are immutable after creation.");
             if (entry.Property(reservation => reservation.RatePlanNameSnapshot).IsModified ||
                 entry.Property(reservation => reservation.MealPlanNameSnapshot).IsModified ||
                 entry.Property(reservation => reservation.MealPlanSlugSnapshot).IsModified ||

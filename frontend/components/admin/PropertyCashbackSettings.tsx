@@ -9,6 +9,7 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochField, KoochInput, KoochSelect } from "@/components/KoochFormControls";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import { apiRequest } from "@/lib/owner-api";
 
 type PropertyCashbackState = "Inherit" | "EnabledOverride" | "Disabled";
@@ -141,6 +142,7 @@ const stateLabels: Record<PropertyCashbackState, string> = {
 };
 
 export function PropertyCashbackSettings({ propertyId }: { propertyId: number }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [response, setResponse] = useState<PropertyCashbackResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -285,18 +287,18 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
           <KoochInput required disabled={saving} type="number" min="0" max="20" step="0.01" inputMode="decimal"
             {...form.register("percentageRate")} />
         </KoochField> : <div className="grid gap-4 sm:grid-cols-2">
-          <KoochField label="مبلغ هر واحد خرید" required error={form.formState.errors.spendUnitAmount?.message}>
+          <KoochField label="مبلغ هر واحد خرید" helperText={currencyLabel} required error={form.formState.errors.spendUnitAmount?.message}>
             <KoochInput required disabled={saving} type="number" min="0" step="0.01" inputMode="decimal"
               {...form.register("spendUnitAmount")} />
           </KoochField>
-          <KoochField label="مبلغ کش‌بک هر واحد" required error={form.formState.errors.rewardAmount?.message}>
+          <KoochField label="مبلغ کش‌بک هر واحد" helperText={currencyLabel} required error={form.formState.errors.rewardAmount?.message}>
             <KoochInput required disabled={saving} type="number" min="0" step="0.01" inputMode="decimal"
               {...form.register("rewardAmount")} />
           </KoochField>
         </div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <KoochField label="حداکثر کش‌بک هر رزرو" required
+          <KoochField label="حداکثر کش‌بک هر رزرو" helperText={currencyLabel} required
             error={form.formState.errors.maxCashbackPerReservation?.message}>
             <KoochInput required disabled={saving} type="number" min="0" step="0.01" inputMode="decimal"
               {...form.register("maxCashbackPerReservation")} />

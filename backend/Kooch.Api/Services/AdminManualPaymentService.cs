@@ -41,6 +41,8 @@ public sealed partial class AdminManualPaymentService(
         CancellationToken cancellationToken = default)
     {
         await EnsureReceiptReservationAccessAsync(reservationId, actorUserId, cancellationToken);
+        var currencyLabel = await dbContext.Reservations.Where(item => item.Id == reservationId)
+            .Select(item => item.CurrencyLabel).SingleAsync(cancellationToken);
 
         return await dbContext.Payments.AsNoTracking()
             .Where(payment =>
@@ -56,6 +58,7 @@ public sealed partial class AdminManualPaymentService(
                 Amount = payment.ReservationId == reservationId ? payment.Amount :
                     payment.Items.Where(item => item.ReservationId == reservationId).Sum(item => item.AllocatedAmount),
                 Currency = payment.Currency,
+                CurrencyLabel = currencyLabel,
                 Status = payment.Status,
                 Method = payment.ManualDetails!.Method,
                 VerificationStatus = payment.ManualDetails.VerificationStatus,
@@ -532,6 +535,7 @@ public sealed partial class AdminManualPaymentService(
     {
         PaymentId = payment.Id,
         ReservationId = reservation.Id,
+        CurrencyLabel = reservation.CurrencyLabel,
         Amount = payment.Amount,
         Currency = payment.Currency,
         Channel = payment.Channel,

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochCard } from "@/components/KoochCard";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
 import type { ReservationCancellationFinancialState, ReservationTableItem } from "./ReservationTable";
 import type { AdminManualPayment } from "./ReservationDetailsDialog";
@@ -25,7 +25,7 @@ export function ReservationFinancialSummary({ reservation, currencyLabel, collec
 }) {
   const cancelled = reservation.status === "Cancelled";
   const financial = reservation.cancellationFinancial;
-  const refundCurrency = financial?.currency === "IRR" ? "ریال" : financial?.currency || currencyLabel;
+  const refundCurrency = currencyLabel;
   const pending = cancelled && financial?.refundPending === true;
   return <KoochCard padding="sm" className={styles.summary} aria-label="خلاصه مالی این رزرو">
     <h3>خلاصه مالی این رزرو</h3>
@@ -87,7 +87,7 @@ export function ReservationPaymentRow({ payment, methodLabel, statusLabel, verif
   payment: AdminManualPayment; methodLabel: string; statusLabel: string; verificationLabel: string;
   dateLabel: string; metadata: Array<[string, string | null | undefined]>; actions: ReactNode; deadlineLabel?: string;
 }) {
-  const currencyLabel = payment.currency === "IRR" ? "ریال" : payment.currency || "واحد نامشخص";
+  const currencyLabel = useSiteCurrencyLabel(payment.currencyLabel);
   const pendingReview = payment.verificationStatus === "PendingVerification";
   return <article className={styles.paymentRow} data-review-pending={pendingReview || undefined} aria-label={`پرداخت ${toPersianDigits(payment.paymentId)}`}>
     <div className={styles.paymentTop}>

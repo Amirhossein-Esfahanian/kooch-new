@@ -348,7 +348,7 @@ public partial class ReservationService(
                 await transaction.CommitAsync(cancellationToken);
                 return new ManualBookingCreateResponse
                 {
-                    BookingSessionId = previous.Id, SessionCode = previous.SessionCode, Currency = previous.Currency,
+                    BookingSessionId = previous.Id, SessionCode = previous.SessionCode, Currency = previous.Currency, CurrencyLabel = previous.CurrencyLabel,
                     TotalAmount = saved.Sum(reservation => reservation.FinalAmount),
                     Reservations = saved.Select(reservation => ToResponse(reservation, reservation.Property,
                         reservation.RoomType, reservation.Guest)).ToArray()
@@ -401,6 +401,7 @@ public partial class ReservationService(
         var now = DateTime.UtcNow;
         var session = new BookingSession
         {
+            CurrencyLabel = await BookingCurrencyLabel.ReadAsync(dbContext, cancellationToken),
             ClientId = currentUser.UserId, GuestId = guest.Id, PropertyId = property.Id,
             CreatedByUserId = currentUser.UserId, IdempotencyKey = submissionKey, RequestHash = submissionHash
         };
@@ -435,6 +436,7 @@ public partial class ReservationService(
                 DiscountAmount = price.DiscountAmount, ExtraGuestAmount = price.ExtraGuestAmount,
                 ServiceFeeAmount = price.ServiceFeeAmount, FinalAmount = price.FinalAmount,
                 Currency = price.Currency, Status = ReservationStatusNormalizer.Normalize(status),
+                CurrencyLabel = session.CurrencyLabel,
                 ApprovalExpiresAtUtc = status == ReservationStatus.PendingApproval
                     ? now.AddMinutes(await ReservationOwnerApprovalWindowSettings.GetMinutesAsync(dbContext, cancellationToken))
                     : null,
@@ -469,7 +471,7 @@ public partial class ReservationService(
                 .OrderBy(reservation => reservation.Id).ToListAsync(cancellationToken);
             return new ManualBookingCreateResponse
             {
-                BookingSessionId = session.Id, SessionCode = session.SessionCode, Currency = session.Currency,
+                BookingSessionId = session.Id, SessionCode = session.SessionCode, Currency = session.Currency, CurrencyLabel = session.CurrencyLabel,
                 TotalAmount = saved.Sum(reservation => reservation.FinalAmount),
                 Reservations = saved.Select(reservation => ToResponse(reservation, reservation.Property,
                     reservation.RoomType, reservation.Guest)).ToArray()
@@ -492,7 +494,7 @@ public partial class ReservationService(
         return new ManualBookingCreateResponse
         {
             BookingSessionId = session.Id, SessionCode = session.SessionCode,
-            Currency = session.Currency, TotalAmount = session.Reservations.Sum(item => item.FinalAmount),
+            Currency = session.Currency, CurrencyLabel = session.CurrencyLabel, TotalAmount = session.Reservations.Sum(item => item.FinalAmount),
             Reservations = responses
         };
     }
@@ -2435,6 +2437,7 @@ public partial class ReservationService(
                             item.Payment.Status == PaymentStatus.Successful).Sum(item => (decimal?)item.AllocatedAmount) ?? 0
                         : 0),
                 Currency = reservation.Currency,
+                CurrencyLabel = reservation.CurrencyLabel,
                 Status = reservation.Status,
                 HasPendingCancellationRequest = includePendingCancellationRequest &&
                     dbContext.ReservationCancellationRequests.Any(request =>
@@ -2735,6 +2738,7 @@ public partial class ReservationService(
                 ? 0
                 : reservation.FinalAmount,
             Currency = reservation.Currency,
+            CurrencyLabel = reservation.CurrencyLabel,
             Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             CreatedAtUtc = reservation.CreatedAtUtc,
@@ -2790,6 +2794,7 @@ public partial class ReservationService(
             PaidAmount = row.PaidAmount,
             RemainingAmount = Math.Max(0, row.FinalAmount - row.PaidAmount),
             Currency = row.Currency,
+            CurrencyLabel = row.CurrencyLabel,
             Status = ReservationStatusNormalizer.Normalize(row.Status),
             HasPendingCancellationRequest = row.HasPendingCancellationRequest,
             Source = row.Source,
@@ -2907,6 +2912,7 @@ public partial class ReservationService(
                 ? 0
                 : reservation.FinalAmount,
             Currency = reservation.Currency,
+            CurrencyLabel = reservation.CurrencyLabel,
             Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             Notes = reservation.GuestNote,
@@ -3174,6 +3180,7 @@ public partial class ReservationService(
                 ? 0
                 : reservation.FinalAmount,
             Currency = reservation.Currency,
+            CurrencyLabel = reservation.CurrencyLabel,
             Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             Notes = reservation.GuestNote,
@@ -3239,6 +3246,7 @@ public partial class ReservationService(
         public decimal TotalPrice { get; set; }
         public decimal FinalAmount { get; set; }
         public decimal PaidAmount { get; set; }
+        public string? CurrencyLabel { get; set; }
         public string Currency { get; set; } = "IRR";
         public ReservationStatus Status { get; set; }
         public bool HasPendingCancellationRequest { get; set; }

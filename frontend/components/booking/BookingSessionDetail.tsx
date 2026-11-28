@@ -49,7 +49,7 @@ function BookingSessionDetailContent({ directProperty }: { directProperty?: Dire
   const { sessionCode } = useParams<{ sessionCode: string }>();
   const router = useRouter();
   const auth = useAuthSession();
-  const currencyLabel = useSiteCurrencyLabel();
+  const siteCurrencyLabel = useSiteCurrencyLabel();
   const support = useBookingSupportPhone();
   const acknowledgementLock = useRef(false);
   const [coordinationChecked, setCoordinationChecked] = useState(false);
@@ -59,6 +59,7 @@ function BookingSessionDetailContent({ directProperty }: { directProperty?: Dire
   // Missing attribution (including an older API response) must fail closed.
   const session = loadedSession && (!directProperty ||
     isDirectSessionForProperty(loadedSession, sessionCode, directProperty)) ? loadedSession : null;
+  const currencyLabel = session?.currencyLabel?.trim() || siteCurrencyLabel;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [initiatingPayment, setInitiatingPayment] = useState(false);
@@ -1120,7 +1121,7 @@ function ReservationCards({
           {statusLabels[reservation.status] ?? reservation.status}
         </KoochBadge>
         <strong>
-          {formatCurrency(reservation.finalAmount, { currencyLabel })}
+          {formatCurrency(reservation.finalAmount, { currencyLabel: reservation.currencyLabel?.trim() || currencyLabel })}
         </strong>
       </div>
     </KoochCard>

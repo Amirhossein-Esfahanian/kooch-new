@@ -11,6 +11,7 @@ public sealed class BookingSessionDetailsResponse
     public bool UsesIndividualReservationPayments { get; set; }
     public int BookingSessionId { get; set; }
     public string SessionCode { get; set; } = string.Empty;
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }
@@ -101,6 +102,7 @@ public sealed class BookingSessionReservationDetailsResponse
     [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     internal string? GuestNote { get; set; }
 }
@@ -115,6 +117,7 @@ public sealed class AccountBookingSessionResponse
     public string DisplayCodeLabel { get; set; } = "کد سفارش";
     public BookingSessionPropertyResponse Property { get; set; } = new();
     public AccountBookingSessionPrimaryGuestResponse? PrimaryGuest { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }
@@ -162,6 +165,7 @@ public sealed class AccountBookingSessionListItemResponse
     public DateOnly? CheckOutDate { get; set; }
     public int ReservationCount { get; set; }
     public decimal TotalAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public string DerivedStatus { get; set; } = string.Empty;
     public PaymentStatus? PaymentStatus { get; set; }
@@ -175,6 +179,7 @@ public sealed class AccountBookingSessionPaymentResponse
     public int PaymentId { get; set; }
     public PaymentStatus Status { get; set; }
     public decimal Amount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public string? Provider { get; set; }
     public DateTime? AppliedAtUtc { get; set; }
@@ -198,6 +203,7 @@ public sealed class AccountBookingSessionReservationResponse
     [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     internal string? GuestNote { get; set; }
 }

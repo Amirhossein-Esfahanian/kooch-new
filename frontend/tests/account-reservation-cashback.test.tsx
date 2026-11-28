@@ -57,6 +57,16 @@ beforeEach(() => {
 });
 
 describe("Guest Reservation Cashback presentation", () => {
+  it("keeps the reservation's saved title instead of the current site title", async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.endsWith("/cancellation-request")) return null;
+      if (path.endsWith("/cashback")) return { cashback: null };
+      return { ...reservation(), currencyLabel: "عنوان ذخیره‌شده" };
+    });
+    render(<Page />);
+    expect((await screen.findAllByText("۱٬۰۰۰٬۰۰۰ عنوان ذخیره‌شده")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("۱٬۰۰۰٬۰۰۰ تومان")).toBeNull();
+  });
   it("hides the lifecycle section for a legitimate null response", async () => {
     mockCashback(null);
     render(<Page />);
@@ -66,14 +76,14 @@ describe("Guest Reservation Cashback presentation", () => {
     expect(screen.queryByText(/بدون کش‌بک/)).toBeNull();
   });
 
-  it("shows Pending snapshot amount, exact API currency and eligibility without implying Wallet credit", async () => {
+  it("shows Pending amount in the reservation display title without implying Wallet credit", async () => {
     mockCashback(pending);
     render(<Page />);
     const card = await screen.findByRole("region", { name: "کش‌بک رزرو" });
     await within(card).findByText("در انتظار");
     expect(within(card).getByText(/۱۲۳٬۴۵۶/)).toBeTruthy();
-    expect(within(card).getByText("IRR")).toBeTruthy();
-    expect(within(card).queryByText("تومان")).toBeNull();
+    expect(within(card).getByText("تومان")).toBeTruthy();
+    expect(within(card).queryByText("IRR")).toBeNull();
     expect(within(card).getByText(/هنوز به کیف پول شما اضافه نشده است/)).toBeTruthy();
     expect(within(card).getByText(/در صورت لغو نشدن رزرو/)).toBeTruthy();
     expect(within(card).getByText(/اعتبار غیرقابل‌برداشت/)).toBeTruthy();

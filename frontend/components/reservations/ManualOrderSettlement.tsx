@@ -8,11 +8,11 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { ManualReceiptFields } from "./ManualReceiptFields";
 import { apiRequest } from "@/lib/owner-api";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
 
 export type ManualOrderBalance = {
-  sessionCode: string; currency: string; totalAmount: number; remainingAmount: number;
+  sessionCode: string; currency: string; currencyLabel?: string | null; totalAmount: number; remainingAmount: number;
   canSettle: boolean; unavailableReason: string | null;
   reservationCount?: number;
   reservations?: { reservationId: number; reservationNumber: string | null; remainingAmount: number; allocationAmount: number }[];
@@ -28,6 +28,7 @@ export function ManualOrderSettlement({ bookingSessionId, onSettled, actionLabel
   const open = controlledOpen ?? localOpen;
   const setOpen = (value: boolean) => { setLocalOpen(value); onOpenChange?.(value); };
   const [balance, setBalance] = useState<ManualOrderBalance | null>(null);
+  const currencyLabel = useSiteCurrencyLabel(balance?.currencyLabel);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -108,7 +109,7 @@ export function ManualOrderSettlement({ bookingSessionId, onSettled, actionLabel
         {balance && <>
           <p>سفارش <bdi>{balance.sessionCode}</bdi></p>
           {balance.canSettle && <><p className="font-semibold">کل مانده: {toPersianDigits(formatCurrency(balance.remainingAmount, {
-            currencyLabel: balance.currency === "IRR" ? "ریال" : balance.currency,
+            currencyLabel: currencyLabel,
           }))}</p>
           {balance.reservations && balance.reservationCount === balance.reservations.length && balance.reservationCount > 0 ?
             <section aria-label="تخصیص دریافت به رزروها" className="grid gap-2">
@@ -116,7 +117,7 @@ export function ManualOrderSettlement({ bookingSessionId, onSettled, actionLabel
               <ul className="grid gap-2 text-sm">{balance.reservations.filter(row => row.allocationAmount > 0).map(row =>
                 <li key={row.reservationId} className="flex flex-wrap justify-between gap-2 border-b border-border pb-2">
                   <Link className="text-primary underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring" href={`/admin/reservations/${row.reservationId}`}>{row.reservationNumber || `شناسهٔ رزرو ${toPersianDigits(row.reservationId)}`}</Link>
-                  <span>{toPersianDigits(formatCurrency(row.allocationAmount, { currencyLabel: balance.currency === "IRR" ? "ریال" : balance.currency }))}</span>
+                  <span>{toPersianDigits(formatCurrency(row.allocationAmount, { currencyLabel: currencyLabel }))}</span>
                 </li>)}</ul>
             </section> : <p className="text-sm text-muted-foreground">ریز کامل تخصیص رزروهای سفارش در پاسخ سرور موجود نیست.</p>}
           <ManualReceiptFields method={method} reference={reference} disabled={submitting}

@@ -9,14 +9,14 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochTable, KoochTableHeader, KoochTableHead, KoochTableRow, KoochTableCell } from "@/components/KoochTable";
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
 import { formatDateTime, statusLabels } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { paymentReviewListHref, reservationFinancialHref } from "./admin-reservation-navigation";
 import styles from "./ManualPaymentReviewQueue.module.css";
 
 export type ManualPaymentReviewItem = {
   paymentId: number; reservationId: number; reservationNumber: string; orderCode: string | null;
-  propertyId: number; propertyName: string; guestName: string; amount: number; currency: string; method: string;
+  propertyId: number; propertyName: string; guestName: string; amount: number; currency: string; currencyLabel?: string | null; method: string;
   createdAtUtc: string; paymentExpiresAtUtc: string | null; reviewProtectionExpiresAtUtc: string | null;
   reservationStatus: string; reviewState: "Protected" | "ExpiringSoon" | "ProtectionExpired" | "FinancialFollowUp";
 };
@@ -40,6 +40,7 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
   onTotalCountChange?: (count: number) => void; onOpenReview?: () => void;
   countOnly?: boolean;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [localPage, setLocalPage] = useState(1);
   const page = summaryOnly ? 1 : controlledPage ?? localPage;
   const [retry, setRetry] = useState(0);
@@ -121,7 +122,7 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
                     <bdi className="font-semibold">{item.reservationNumber}</bdi>
                     <span>{item.guestName || "نام مهمان ثبت نشده"}</span>
                   </div></KoochTableCell>
-                  <KoochTableCell className={styles.amount} role="cell"><strong>{formatCurrency(item.amount, { currencyLabel: item.currency === "IRR" ? "ریال" : item.currency })}</strong></KoochTableCell>
+                  <KoochTableCell className={styles.amount} role="cell"><strong>{formatCurrency(item.amount, { currencyLabel: item.currencyLabel?.trim() || currencyLabel })}</strong></KoochTableCell>
                   <KoochTableCell role="cell"><div className={styles.reviewStatus}>
                     <KoochBadge variant="muted">در انتظار بررسی</KoochBadge>
                     <span className={states[item.reviewState].warning ? styles.warning : styles.protection}>{states[item.reviewState].label}</span>

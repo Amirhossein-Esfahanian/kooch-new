@@ -5,7 +5,7 @@ import { ReservationDetailsDialog, type AdminManualPayment } from "@/components/
 import type { ReservationCancellationFinancialState, ReservationTableItem } from "@/components/reservations/ReservationTable";
 
 vi.mock("@/lib/currency", async original => ({
-  ...(await original<typeof import("@/lib/currency")>()), useSiteCurrencyLabel: () => "ریال",
+  ...(await original<typeof import("@/lib/currency")>()), useSiteCurrencyLabel: (snapshot?: string | null) => snapshot || "ریال",
 }));
 
 const item: ReservationTableItem = {
@@ -44,6 +44,14 @@ function amount(root: HTMLElement, label: string) {
 function expandBreakdown() { fireEvent.click(screen.getByText("ریز محاسبات رزرو و لغو", { selector: "summary" })); }
 
 describe("dedicated Admin financial presentation", () => {
+  it("keeps the saved title consistent between Admin reservation amounts and its receipt", () => {
+    const summary = show({ reservation: { ...item, currencyLabel: "عنوان رزرو" },
+      manualPayments: [{ ...payment, currencyLabel: "عنوان رزرو" }] });
+    expect(amount(summary, "مبلغ این رزرو")).toBe("۱٬۰۰۰ عنوان رزرو");
+    const row = screen.getByRole("article", { name: "پرداخت ۷" });
+    expect(within(row).getByText("۴۰۰ عنوان رزرو")).toBeTruthy();
+    expect(within(row).queryByText(/IRR|ریال/)).toBeNull();
+  });
   it("distinguishes received funds and collectible balance, without duplicating the header payment action", () => {
     const summary = show({ onCreateManualPayment: vi.fn() });
     expect(amount(summary, "مبلغ این رزرو")).toBe("۱٬۰۰۰ ریال");
@@ -150,11 +158,11 @@ describe("dedicated Admin financial presentation", () => {
     expect(within(details).queryByText("-", { exact: true })).toBeNull();
   });
 
-  it("uses each payment's actual currency and omits empty optional values", () => {
-    show({ manualPayments: [{ ...payment, currency: "USD", referenceNumber: null, destinationBank: " ", notes: null,
+  it("uses each payment's saved title and omits empty optional values", () => {
+    show({ manualPayments: [{ ...payment, currency: "USD", currencyLabel: "عنوان رسید", referenceNumber: null, destinationBank: " ", notes: null,
       destinationAccountReference: null, verifiedBy: null, verifiedAtUtc: null, submittedBy: null, submittedAtUtc: "" }] });
     const row = screen.getByRole("article", { name: "پرداخت ۷" });
-    expect(within(row).getByText("۴۰۰ USD")).toBeTruthy();
+    expect(within(row).getByText("۴۰۰ عنوان رسید")).toBeTruthy();
     fireEvent.click(within(row).getByText("جزئیات پرداخت", { selector: "summary" }));
     expect(within(row).queryByText(/شماره پیگیری|بانک مقصد|شناسه حساب مقصد|یادداشت|ثبت‌کننده|تأییدکننده/)).toBeNull();
     expect(within(row).queryByText(/ریال/)).toBeNull();

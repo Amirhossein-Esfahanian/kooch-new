@@ -18,6 +18,7 @@ public sealed class GuestReservationVoucherResponse
     public int AdultCount { get; set; }
     public int ChildCount { get; set; }
     public decimal GrossAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
 }
 
@@ -41,6 +42,7 @@ public sealed class OwnerReservationVoucherResponse
     public int AdultCount { get; set; }
     public int ChildCount { get; set; }
     public decimal GrossAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public decimal CommissionRate { get; set; }
     public decimal CommissionAmount { get; set; }

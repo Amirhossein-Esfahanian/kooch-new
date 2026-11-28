@@ -792,6 +792,9 @@ namespace Kooch.Api.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
 
+                    b.Property<string>("CurrencyLabel")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -4146,6 +4149,9 @@ namespace Kooch.Api.Migrations
                         .IsRequired()
                         .HasMaxLength(3)
                         .HasColumnType("nvarchar(3)");
+
+                    b.Property<string>("CurrencyLabel")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");

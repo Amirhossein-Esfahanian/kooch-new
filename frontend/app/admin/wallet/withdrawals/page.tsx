@@ -12,7 +12,7 @@ import { KoochField, KoochInput, KoochSelect, KoochTextarea } from "@/components
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
 import { formatDateTime, formatNumber } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { apiRequest } from "@/lib/owner-api";
 
 type WithdrawalStatus = "Pending" | "Approved" | "Paid" | "Rejected" | "Cancelled";
@@ -48,6 +48,7 @@ const localDateTimeValue = (date: Date) =>
 const errorText = (error: unknown) => error instanceof Error ? error.message : "عملیات انجام نشد؛ دوباره تلاش کنید.";
 
 function WithdrawalManagement() {
+  const currencyLabel = useSiteCurrencyLabel();
   const searchParams = useSearchParams();
   const linkedUserId = searchParams.get("userId");
   const preselectedUserId = linkedUserId && /^[1-9]\d*$/.test(linkedUserId) && Number.isSafeInteger(Number(linkedUserId))
@@ -279,7 +280,7 @@ function WithdrawalManagement() {
     step === "paidForm" ? "ثبت پرداخت" : step === "paidConfirm" ? "تأیید نهایی پرداخت" : "جزئیات درخواست برداشت";
   const details = detail && <div className="grid gap-3 text-sm sm:grid-cols-2">
     <p>مهمان: <span className="font-semibold">{detail.guestName}</span></p>
-    <p>مبلغ درخواستی: <span className="font-semibold tabular-nums">{formatCurrency(detail.amount, { showCurrency: false })} <bdi dir="ltr">{detail.currency}</bdi></span></p>
+    <p>مبلغ درخواستی: <span className="font-semibold tabular-nums">{formatCurrency(detail.amount, { showCurrency: false })} <span>{currencyLabel}</span></span></p>
     <p>وضعیت: <KoochBadge variant="muted">{statusLabels[detail.status]}</KoochBadge></p>
     <p>زمان درخواست: <time dateTime={detail.requestedAtUtc}>{formatDateTime(detail.requestedAtUtc)}</time></p>
     {detail.processedAtUtc && <p>زمان بررسی: <time dateTime={detail.processedAtUtc}>{formatDateTime(detail.processedAtUtc)}</time></p>}
@@ -316,7 +317,7 @@ function WithdrawalManagement() {
             list.items.map(item => <KoochTableRow key={item.id} onClick={() => openDetail(item.id)} className="cursor-pointer">
               <KoochTableCell>{item.guestName}</KoochTableCell>
               <KoochTableCell className="tabular-nums">{formatCurrency(item.amount, { showCurrency: false })}</KoochTableCell>
-              <KoochTableCell><bdi dir="ltr">{item.currency}</bdi></KoochTableCell>
+              <KoochTableCell><span>{currencyLabel}</span></KoochTableCell>
               <KoochTableCell><KoochBadge variant="muted">{statusLabels[item.status]}</KoochBadge></KoochTableCell>
               <KoochTableCell><time dateTime={item.requestedAtUtc}>{formatDateTime(item.requestedAtUtc)}</time></KoochTableCell>
               <KoochTableCell>{item.paidAtUtc ? formatDateTime(item.paidAtUtc) : item.processedAtUtc ? formatDateTime(item.processedAtUtc) : "—"}</KoochTableCell>
@@ -348,8 +349,8 @@ function WithdrawalManagement() {
         {balanceError && <p role="alert" className="text-sm text-destructive">{balanceError} <KoochButton size="sm" variant="outline" onClick={() => selectedUser && void selectUser(selectedUser)}>تلاش دوباره</KoochButton></p>}
         {selectedUser && !balanceLoading && !balanceError && balances.length === 0 && <p className="text-sm text-muted-foreground">کیف پولی برای این کاربر موجود نیست.</p>}
         {balances.length > 0 && !balanceLoading && <>
-          <KoochField label="واحد پول"><KoochSelect value={currency} onChange={event => { setCurrency(event.target.value); setAmount(""); setCreateError(""); }}>{balances.map(balance => <option key={balance.currency} value={balance.currency}>{balance.currency}</option>)}</KoochSelect></KoochField>
-          <p className="text-sm text-muted-foreground">موجودی قابل برداشت: <strong className="text-foreground">{formatCurrency(balances.find(balance => balance.currency === currency)?.withdrawableBalance ?? 0, { showCurrency: false })} <bdi dir="ltr">{currency}</bdi></strong></p>
+          <KoochField label="واحد پول"><KoochSelect value={currency} onChange={event => { setCurrency(event.target.value); setAmount(""); setCreateError(""); }}>{balances.map(balance => <option key={balance.currency} value={balance.currency}>{currencyLabel}</option>)}</KoochSelect></KoochField>
+          <p className="text-sm text-muted-foreground">موجودی قابل برداشت: <strong className="text-foreground">{formatCurrency(balances.find(balance => balance.currency === currency)?.withdrawableBalance ?? 0, { showCurrency: false })} <span>{currencyLabel}</span></strong></p>
           <KoochField label="مبلغ درخواستی" required error={createError || undefined}><KoochInput type="number" inputMode="decimal" min="0" step="0.01" value={amount} onChange={event => { setAmount(event.target.value); setCreateError(""); }} /></KoochField>
         </>}
         <p className="text-xs text-muted-foreground">ثبت درخواست فقط وجه قابل برداشت را رزرو می‌کند؛ پرداخت و کسر از کیف پول پس از تأیید و ثبت پرداخت انجام می‌شود.</p>
@@ -381,7 +382,7 @@ function WithdrawalManagement() {
           {formError && <p role="alert" className="text-sm text-destructive">{formError}</p>}
         </div>}
         {step === "paidConfirm" && <div className="space-y-2 rounded-lg border border-border bg-muted p-3 text-sm">
-          <p>مبلغ پرداختی: {formatCurrency(detail.amount, { showCurrency: false })} <bdi dir="ltr">{detail.currency}</bdi></p>
+          <p>مبلغ پرداختی: {formatCurrency(detail.amount, { showCurrency: false })} <span>{currencyLabel}</span></p>
           <p>روش پرداخت: {payoutMethod && methodLabels[payoutMethod]}</p>
           <p>شماره/مرجع پرداخت: <bdi dir="ltr">{referenceNumber.trim()}</bdi></p>
           <p>زمان پرداخت: {formatDateTime(new Date(paidAtLocal).toISOString())}</p>

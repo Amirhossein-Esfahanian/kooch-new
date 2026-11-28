@@ -65,6 +65,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 ReservationCount = session.Reservations.Count,
                 TotalAmount = session.Reservations.Sum(reservation => reservation.FinalAmount),
                 Currency = session.Currency,
+                CurrencyLabel = session.CurrencyLabel,
                 WalletOnlyFundingApplied = dbContext.BookingFundingAttempts.Any(attempt =>
                     attempt.BookingSessionId == session.Id && attempt.PaymentId == null && attempt.AppliedAtUtc.HasValue),
                 PaymentStatus = session.Payments
@@ -134,6 +135,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                             Status = reservation.Status,
                             FinalAmount = reservation.FinalAmount,
                             Currency = reservation.Currency,
+                            CurrencyLabel = reservation.CurrencyLabel,
                             PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                             ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc
                         }).ToList()
@@ -242,6 +244,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                     }
                     : null,
                 Currency = session.Currency,
+                CurrencyLabel = session.CurrencyLabel,
                 Payment = session.Payments
                     .OrderByDescending(payment => payment.CreatedAtUtc)
                     .ThenByDescending(payment => payment.Id)
@@ -251,6 +254,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         Status = payment.Status,
                         Amount = payment.Amount,
                         Currency = payment.Currency,
+                        CurrencyLabel = session.CurrencyLabel,
                         Provider = payment.Provider,
                         AppliedAtUtc = payment.AppliedAtUtc
                     })
@@ -274,6 +278,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
                         Currency = reservation.Currency,
+                CurrencyLabel = reservation.CurrencyLabel,
                         GuestNote = reservation.GuestNote
                     })
                     .ToList()
@@ -299,6 +304,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 BookingSessionId = session.Id,
                 SessionCode = session.SessionCode,
                 Currency = session.Currency,
+                CurrencyLabel = session.CurrencyLabel,
                 ExpectedArrivalTime = session.ExpectedArrivalTime,
                 ExpectedArrivalDayOffset = session.ExpectedArrivalDayOffset,
                 ReceptionCoordinationRequired = session.ReceptionCoordinationRequired,
@@ -368,6 +374,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
                         Currency = reservation.Currency,
+                        CurrencyLabel = reservation.CurrencyLabel,
                         GuestNote = reservation.GuestNote
                     })
                     .ToList()
@@ -406,6 +413,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                 FinalAmount = reservation.FinalAmount,
                 Currency = reservation.Currency,
+                        CurrencyLabel = reservation.CurrencyLabel,
                 GuestNote = reservation.GuestNote
             })
             .ToArray();
@@ -598,6 +606,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             ReservationCount = projection.ReservationCount,
             TotalAmount = projection.TotalAmount,
             Currency = projection.Currency,
+            CurrencyLabel = projection.CurrencyLabel,
             DerivedStatus = derivedStatus,
             PaymentStatus = projection.PaymentStatus,
             PaymentDeadlineUtc = projection.HasManualReservations ? null : projection.PaymentDeadlineUtc,
@@ -616,6 +625,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
         public DateOnly? CheckOutDate { get; set; }
         public int ReservationCount { get; set; }
         public decimal TotalAmount { get; set; }
+        public string? CurrencyLabel { get; set; }
         public string Currency { get; set; } = string.Empty;
         public PaymentStatus? PaymentStatus { get; set; }
         public bool WalletOnlyFundingApplied { get; set; }

@@ -193,6 +193,7 @@ public sealed class BookingSessionService(
             cancellationToken);
         ValidateAccountBookingMode(preparedItems, creationKind);
         var currency = AssertSameCurrency(preparedItems);
+        var currencyLabel = await BookingCurrencyLabel.ReadAsync(dbContext, cancellationToken);
         var primaryGuest = await ResolvePrimaryGuestAsync(
             request.ClientId,
             request.GuestId,
@@ -231,6 +232,7 @@ public sealed class BookingSessionService(
             TravelerSnapshotCapturedAtUtc = accountContext is null ? null : now,
             PropertyId = request.PropertyId,
             Currency = currency,
+            CurrencyLabel = currencyLabel,
             CommissionType = creationKind == BookingSessionCreationKind.Account
                 ? accountContext?.DirectContext is null ? CommissionType.Direct : CommissionType.PropertyReferralCode
                 : null,
@@ -282,6 +284,7 @@ public sealed class BookingSessionService(
                 ServiceFeeAmount = prepared.Price.ServiceFeeAmount,
                 FinalAmount = prepared.Price.FinalAmount,
                 Currency = prepared.Currency,
+                CurrencyLabel = currencyLabel,
                 Status = prepared.Status,
                 ApprovedAtUtc = commonPaymentDeadlineUtc.HasValue ? now : null,
                 ApprovalExpiresAtUtc = prepared.Status == ReservationStatus.PendingApproval
@@ -1261,6 +1264,7 @@ public sealed class BookingSessionService(
             GuestId = session.GuestId,
             PropertyId = session.PropertyId,
             Currency = session.Currency,
+            CurrencyLabel = session.CurrencyLabel,
             Reservations = session.Reservations
                 .OrderBy(reservation => reservation.Id)
                 .Select(reservation => new BookingSessionReservationResult
@@ -1276,7 +1280,8 @@ public sealed class BookingSessionService(
                     CheckOutDate = reservation.CheckOutDate,
                     Status = reservation.Status,
                     FinalAmount = reservation.FinalAmount,
-                    Currency = reservation.Currency
+                    Currency = reservation.Currency,
+                    CurrencyLabel = reservation.CurrencyLabel
                 })
                 .ToArray()
         };

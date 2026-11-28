@@ -18,6 +18,7 @@ export interface GuestVoucher {
   childCount: number;
   grossAmount: number;
   currency: string;
+  currencyLabel?: string | null;
 }
 
 export function getGuestVoucher(reservationNumber: string, signal?: AbortSignal) {

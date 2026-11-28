@@ -45,6 +45,7 @@ public sealed class AccountBookingSessionsController(
             SessionCode = result.SessionCode,
             PropertyId = result.PropertyId,
             Currency = result.Currency,
+            CurrencyLabel = result.CurrencyLabel,
             Reservations = result.Reservations
         };
         return CreatedAtAction(

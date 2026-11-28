@@ -70,7 +70,7 @@ describe("Admin manual payment reservation UI", () => {
     const createDialog = await screen.findByRole("dialog", { name: "ثبت پرداخت دستی" });
     expect((within(createDialog).getByLabelText(/^مبلغ/) as HTMLInputElement).value).toBe("200000");
     expect(within(createDialog).queryByLabelText(/^واحد پول$/)).toBeNull();
-    expect(within(createDialog).getByLabelText("واحد پول ثابت").textContent).toBe("ریال");
+    expect(within(createDialog).getByLabelText("واحد پول ثابت").textContent).toBe("تومان");
     expect(within(createDialog).queryByLabelText(/مدرک|فایل|رسید/)).toBeNull();
   });
 

@@ -25,7 +25,7 @@ import {
   KoochTableRow,
 } from "@/components/KoochTable";
 import { apiRequest } from "@/lib/owner-api";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { formatDateTime } from "@/lib/account-reservations";
 
 export type GuestResponse = {
@@ -165,6 +165,7 @@ function guestMatchesSearch(guest: GuestResponse, search: string) {
 }
 
 export function GuestManagement() {
+  const currencyLabel = useSiteCurrencyLabel();
   const router = useRouter();
   const session = useAuthSession();
   const canViewWallet = session.platformRole === "SuperAdmin" || session.platformPermissions.includes("ManagePayments");
@@ -552,7 +553,7 @@ export function GuestManagement() {
               <div className="grid gap-3">
                 {walletBalances.map(wallet => (
                   <div key={wallet.currency} className="space-y-2 rounded-lg border border-border p-3 text-sm">
-                    <h4 className="font-semibold text-foreground">واحد پول: <bdi dir="ltr">{wallet.currency}</bdi></h4>
+                    <h4 className="font-semibold text-foreground">واحد پول: <span>{currencyLabel}</span></h4>
                     <dl className="grid gap-2">
                       {([
                         ["قابل استفاده", wallet.balance],
@@ -563,7 +564,7 @@ export function GuestManagement() {
                       ] as const).map(([label, value]) => (
                         <div key={label} className="flex items-baseline justify-between gap-3">
                           <dt className="text-muted-foreground">{label}</dt>
-                          <dd className="font-semibold tabular-nums text-foreground">{formatCurrency(value, { showCurrency: false })} <bdi dir="ltr">{wallet.currency}</bdi></dd>
+                          <dd className="font-semibold tabular-nums text-foreground">{formatCurrency(value, { showCurrency: false })} <span>{currencyLabel}</span></dd>
                         </div>
                       ))}
                     </dl>
@@ -579,7 +580,7 @@ export function GuestManagement() {
                                 <KoochBadge variant={transaction.direction === "Credit" ? "success" : "destructive"}>{transaction.direction === "Credit" ? "افزایش موجودی" : "کاهش موجودی"}</KoochBadge>
                                 <time dateTime={transaction.createdAtUtc} className="text-muted-foreground">{formatDateTime(transaction.createdAtUtc)}</time>
                               </span>
-                              <span className="font-semibold tabular-nums text-foreground" dir="ltr">{transaction.direction === "Credit" ? "+" : "−"}{formatCurrency(transaction.amount, { showCurrency: false })} {transaction.currency}</span>
+                              <span className="font-semibold tabular-nums text-foreground" dir="ltr">{transaction.direction === "Credit" ? "+" : "−"}{formatCurrency(transaction.amount, { showCurrency: false })} {currencyLabel}</span>
                             </li>
                           ))}
                         </ul>}

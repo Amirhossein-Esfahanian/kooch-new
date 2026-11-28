@@ -22,6 +22,7 @@ public sealed class ManualPaymentReviewQueueItem
     public string PropertyName { get; set; } = string.Empty;
     public string GuestName { get; set; } = string.Empty;
     public decimal Amount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public ManualPaymentMethod Method { get; set; }
     [JsonConverter(typeof(UtcDateTimeJsonConverter))] public DateTime CreatedAtUtc { get; set; }

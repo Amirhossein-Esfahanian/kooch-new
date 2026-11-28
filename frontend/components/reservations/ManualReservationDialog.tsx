@@ -128,6 +128,7 @@ type ManualBookingCreateResponse = {
   sessionCode: string;
   totalAmount: number;
   currency: string;
+  currencyLabel?: string | null;
   reservations: Array<{
     id: number;
     reservationNumber: string;
@@ -744,9 +745,7 @@ export function ManualReservationDialog({
     ? editStatusOptions
     : createStatusOptions;
   const displayedStatus = selectedStatus;
-  const previewCurrencyLabel = isWizard
-    ? pricePreview?.currency === "IRR" || !pricePreview ? "ریال" : pricePreview.currency
-    : currencyLabel;
+  const previewCurrencyLabel = currencyLabel;
   const childRuleSummary = effectiveRules
     ? buildChildRuleSummary(effectiveRules, previewCurrencyLabel)
     : null;
@@ -1835,7 +1834,7 @@ export function ManualReservationDialog({
             <div><dt className="text-muted-foreground">شماره سفارش</dt><dd><bdi>{createdOrder.sessionCode}</bdi></dd></div>
             <div><dt className="text-muted-foreground">تعداد رزروها</dt><dd>{toPersianDigits(createdOrder.reservations.length)}</dd></div>
             <div><dt className="text-muted-foreground">مبلغ کل سفارش</dt><dd className="font-bold">{formatCurrency(createdOrder.totalAmount, {
-              currencyLabel: createdOrder.currency === "IRR" ? "ریال" : createdOrder.currency,
+              currencyLabel: createdOrder.currencyLabel?.trim() || currencyLabel,
             })}</dd></div>
           </dl>
           <ul className="divide-y divide-border rounded-lg border border-border" aria-label="رزروهای ایجادشده">
@@ -1845,7 +1844,7 @@ export function ManualReservationDialog({
                   {item.reservationNumber} — {item.roomName || item.roomTypeName}
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
-                <span>{formatCurrency(item.finalAmount, { currencyLabel: createdOrder.currency === "IRR" ? "ریال" : createdOrder.currency })}</span>
+                <span>{formatCurrency(item.finalAmount, { currencyLabel: createdOrder.currencyLabel?.trim() || currencyLabel })}</span>
                 <KoochBadge variant={item.status ? statusVariant(item.status) : "muted"}>
                   {item.status ? statusLabels[item.status] ?? item.status : "وضعیت در پاسخ موجود نیست"}
                 </KoochBadge>
@@ -2544,10 +2543,10 @@ export function ManualReservationDialog({
             <ul aria-label="قیمت اتاق‌های انتخاب‌شده" className="divide-y divide-border rounded-lg border border-border">
               {selectedRoomNames.map((name, index) => <li key={draft.roomIds[index] ?? `${draft.roomTypeId}-${index}`} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
                 <span>{name}</span>
-                <strong>{roomPrices[index] ? formatCurrency(roomPrices[index].finalAmount, { currencyLabel: roomPrices[index].currency === "IRR" ? "ریال" : roomPrices[index].currency }) : "قیمت آماده نیست"}</strong>
+                <strong>{roomPrices[index] ? formatCurrency(roomPrices[index].finalAmount, { currencyLabel: currencyLabel }) : "قیمت آماده نیست"}</strong>
               </li>)}
             </ul>
-            <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-3 font-bold"><span>مبلغ کل سفارش</span><span>{pricePreview ? formatCurrency(pricePreview.finalAmount, { currencyLabel: pricePreview.currency === "IRR" ? "ریال" : pricePreview.currency }) : "قیمت آماده نیست"}</span></p>
+            <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-3 font-bold"><span>مبلغ کل سفارش</span><span>{pricePreview ? formatCurrency(pricePreview.finalAmount, { currencyLabel: currencyLabel }) : "قیمت آماده نیست"}</span></p>
             <fieldset className="grid gap-2" disabled={submitting} aria-labelledby="manual-mode-label">
               <div className="flex items-center gap-2 text-sm font-semibold"><span id="manual-mode-label">نحوه ثبت رزرو</span>
                 <KoochInfoHint ariaLabel="توضیح نحوه ثبت رزرو" floating content={<div className="grid gap-2">

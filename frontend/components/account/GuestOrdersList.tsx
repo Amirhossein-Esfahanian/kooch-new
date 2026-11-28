@@ -139,7 +139,7 @@ function OrderCard({
         <div><dt>تاریخ اقامت</dt><dd>{stayDates}</dd></div>
         <div><dt>رزروهای سفارش</dt><dd>{order.reservationCount.toLocaleString("fa-IR")} رزرو مستقل</dd></div>
         <div><dt>{order.derivedStatus === "Mixed" ? "رزروها و مبلغ اولیه سفارش" : "رزروها و مبلغ کل"}</dt>
-          <dd>{formatCurrency(order.totalAmount, { currencyLabel })}</dd></div>
+          <dd>{formatCurrency(order.totalAmount, { currencyLabel: order.currencyLabel?.trim() || currencyLabel })}</dd></div>
       </dl>
       <div className={styles.cardFooter}>
         {order.paymentDeadlineUtc && <div aria-live="off" className={styles.deadline}>

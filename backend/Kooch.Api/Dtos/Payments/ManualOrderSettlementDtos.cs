@@ -16,6 +16,7 @@ public sealed class ManualOrderSettlementRequest
 
 public sealed class ManualOrderBalanceResponse
 {
+    public string? CurrencyLabel { get; set; }
     public int BookingSessionId { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     public decimal TotalAmount { get; set; }
@@ -32,6 +33,7 @@ public sealed record ManualOrderBalanceReservationResponse(int ReservationId, st
 
 public sealed class ManualOrderSettlementResponse
 {
+    public string? CurrencyLabel { get; set; }
     public int PaymentId { get; set; }
     public int BookingSessionId { get; set; }
     public decimal Amount { get; set; }

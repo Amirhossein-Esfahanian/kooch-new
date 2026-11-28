@@ -11,7 +11,7 @@ import { AccountSkeleton } from "./AccountSkeleton";
 import { ApiRequestError } from "@/lib/owner-api";
 import { getWelcomeGifts, type WelcomeGift } from "@/lib/account-welcome-gifts";
 import { formatDateTime, formatNumber, type PagedResult } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import styles from "./GuestWelcomeGiftsPage.module.css";
 
 type HistoryState = { status: "loading" } | { status: "error"; unauthorized: boolean; unavailable: boolean }
@@ -28,6 +28,7 @@ function GiftHistorySkeleton() {
 }
 
 function GiftHistory() {
+  const currencyLabel = useSiteCurrencyLabel();
   const [page, setPage] = useState(1);
   const [version, setVersion] = useState(0);
   const [state, setState] = useState<HistoryState>({ status: "loading" });
@@ -72,7 +73,7 @@ function GiftHistory() {
             {Date.parse(gift.expiresAtUtc) <= now && <KoochBadge variant="muted">منقضی‌شده</KoochBadge>}
           </div>
           <dl className={styles.details}>
-            <div><dt>مبلغ اولیه هدیه</dt><dd className={styles.amount}>{formatCurrency(gift.grantedAmount, { showCurrency: false })} <bdi dir="ltr">{gift.currency}</bdi></dd></div>
+            <div><dt>مبلغ اولیه هدیه</dt><dd className={styles.amount}>{formatCurrency(gift.grantedAmount, { showCurrency: false })} <span>{currencyLabel}</span></dd></div>
             <div><dt>تاریخ اعطا</dt><dd><time dateTime={gift.grantedAtUtc}>{formatDateTime(gift.grantedAtUtc)}</time></dd></div>
             <div><dt>تاریخ انقضا</dt><dd><time dateTime={gift.expiresAtUtc}>{formatDateTime(gift.expiresAtUtc)}</time></dd></div>
           </dl>

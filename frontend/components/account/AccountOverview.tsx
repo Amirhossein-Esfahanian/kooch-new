@@ -9,7 +9,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { AccountSkeleton } from "./AccountSkeleton";
 import { formatDate, formatDateTime, formatNumber, statusLabels, statusVariant, isPaymentEligible, type AccountReservation, type PagedResult } from "@/lib/account-reservations";
 import { formatLocalIsoDate, parseLocalIsoDate } from "@/lib/date-utils";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { getEligibleReviewStays } from "@/lib/guest-reviews";
 import { apiRequest } from "@/lib/owner-api";
 import styles from "./AccountOverview.module.css";
@@ -75,6 +75,7 @@ function Loading({ label }: { label: string }) {
   return <div className={styles.loading} role="status" aria-busy="true"><span className="sr-only">{label}</span><AccountSkeleton variant="block" /></div>;
 }
 export function AccountOverview({ displayName }: { displayName: string }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const upcoming = useResource(loadUpcoming);
   const reviews = useResource(loadReviews);
   const wallet = useResource(loadWallet);
@@ -101,7 +102,7 @@ export function AccountOverview({ displayName }: { displayName: string }) {
       <KoochCard className={styles.metric} padding="sm"><div className={styles.metricHeading}><Image className={styles.icon} src="/svgs/account/reviews.svg" alt="" width={24} height={24} /><h2><Link href="/account/reviews" aria-label="مشاهده نظرات من">اقامت‌های قابل ارزیابی</Link></h2></div>
         <div className={styles.metricBody}>{reviews.status === "loading" ? <Loading label="در حال دریافت تعداد نظرها…" /> : reviews.status === "error" ? <p className={styles.muted}>در دسترس نیست</p> : <strong className={styles.metricValue}>{formatNumber(reviews.data.totalCount)}</strong>}<span className={styles.metricHint} aria-hidden="true">ثبت یا ویرایش نظر</span></div></KoochCard>
       <KoochCard className={styles.metric} padding="sm"><div className={styles.metricHeading}><Image className={styles.icon} src="/svgs/account/wallet.svg" alt="" width={24} height={24} /><h2><Link href="/account/wallet" aria-label="مشاهده کیف پول">موجودی کیف پول</Link></h2></div>
-        <div className={styles.metricBody}>{wallet.status === "loading" ? <Loading label="در حال دریافت موجودی…" /> : wallet.status === "error" ? <Unavailable retry={wallet.retry} /> : <p className={styles.walletValue}><strong>{formatCurrency(wallet.data.balance, { showCurrency: false })}</strong> <bdi dir="ltr">{wallet.data.currency}</bdi></p>}<span className={styles.metricHint} aria-hidden="true">مشاهده کیف پول</span></div></KoochCard>
+        <div className={styles.metricBody}>{wallet.status === "loading" ? <Loading label="در حال دریافت موجودی…" /> : wallet.status === "error" ? <Unavailable retry={wallet.retry} /> : <p className={styles.walletValue}><strong>{formatCurrency(wallet.data.balance, { showCurrency: false })}</strong> <span>{currencyLabel}</span></p>}<span className={styles.metricHint} aria-hidden="true">مشاهده کیف پول</span></div></KoochCard>
     </section>
     <KoochCard className={styles.attention} aria-labelledby="account-attention-title">
       <div className={styles.sectionHeading}><h2 id="account-attention-title">کارهای پیش رو</h2><span className={styles.muted}>پرداخت و تجربهٔ اقامت</span></div>

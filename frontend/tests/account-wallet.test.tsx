@@ -55,7 +55,7 @@ describe("Guest account wallet", () => {
     expect(within(ledger).getByText("کاهش موجودی")).not.toBeNull();
     expect(within(ledger).getByText(/۱۵۰٬۰۰۰/)).not.toBeNull();
     expect(within(ledger).getByText(/۲۵٬۰۰۰/)).not.toBeNull();
-    expect(within(ledger).getAllByText("ریال")).toHaveLength(2);
+    expect(within(ledger).getAllByText("تومان")).toHaveLength(2);
     expect(within(ledger).queryByText("در انتظار بررسی")).toBeNull();
     expect(within(ledger).queryByText(/901|902|cashback|برداشت/)).toBeNull();
     expect(await screen.findByText("در انتظار بررسی")).not.toBeNull();
@@ -154,8 +154,8 @@ describe("Guest account wallet", () => {
     expect(screen.getByText(/۵٬۰۰۰٬۰۰۰/)).not.toBeNull();
     expect(within(screen.getByText("اعتبار غیرقابل برداشت").parentElement as HTMLElement).getByText(/۲٬۰۰۰٬۰۰۰/)).not.toBeNull();
     expect(api).toHaveBeenCalledWith("/account/wallet?currency=IRR");
-    expect(within(screen.getByRole("region", { name: "خلاصه کیف پول" })).getAllByText("ریال")).toHaveLength(3);
-    expect(screen.queryByText(/تومان/)).toBeNull();
+    expect(within(screen.getByRole("region", { name: "خلاصه کیف پول" })).getAllByText("تومان")).toHaveLength(3);
+    expect(screen.queryByText(/IRR|EUR|USD/)).toBeNull();
   });
 
   it("hides withdrawal action when only nonwithdrawable funds are available", async () => {
@@ -300,18 +300,18 @@ describe("Guest account wallet", () => {
     expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl");
   });
 
-  it("keeps non-IRR currencies literal without converting amounts or changing request currencies", async () => {
+  it("uses the single configured display title without converting amounts or changing financial request codes", async () => {
     currentBalance = { currency: "EUR", balance: 25, withdrawableBalance: 20, nonWithdrawableBalance: 5 };
     history = [{ ...request, currency: "EUR", amount: 10 }];
     transactionItems = [{ ...credit, currency: "USD", amount: 15 }];
     render(<Page />);
     const summary = await screen.findByRole("region", { name: "خلاصه کیف پول" });
-    expect(within(summary).getAllByText("EUR")).toHaveLength(3);
+    expect(within(summary).getAllByText("تومان")).toHaveLength(3);
     expect(within(summary).getByText("۲۵", { exact: false })).toBeTruthy();
     const ledger = screen.getByRole("region", { name: "تراکنش‌های کیف پول" });
-    expect(await within(ledger).findByText("USD")).toBeTruthy();
+    expect(await within(ledger).findByText("تومان")).toBeTruthy();
     expect(screen.queryByText("ریال")).toBeNull();
-    expect(screen.queryByText(/تومان/)).toBeNull();
+    expect(screen.queryByText(/IRR|EUR|USD/)).toBeNull();
     expect(api).toHaveBeenCalledWith("/account/wallet?currency=IRR");
     expect(api).toHaveBeenCalledWith("/account/wallet/transactions?currency=EUR&page=1&pageSize=20");
   });
@@ -359,7 +359,7 @@ describe("Guest account wallet", () => {
     await waitFor(() => expect(api).toHaveBeenCalledWith("/account/wallet/withdrawals?page=2&pageSize=10"));
     await within(withdrawals).findByRole("table");
     expect((within(pagination).getByRole("button", { name: "بعدی" }) as HTMLButtonElement).disabled).toBe(true);
-    expect(within(withdrawals).getByText("ریال")).toBeTruthy();
+    expect(within(withdrawals).getByText("تومان")).toBeTruthy();
   });
 
   it("uses scoped theme tokens and responsive balance/skeleton layouts without new motion or icons", () => {

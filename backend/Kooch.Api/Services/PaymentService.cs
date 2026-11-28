@@ -482,6 +482,7 @@ public partial class PaymentService : IPaymentService
             PaidAmount = paidAmount,
             RemainingAmount = remainingAmount,
             Currency = reservation.Currency,
+            CurrencyLabel = reservation.CurrencyLabel,
             PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
             RemainingPaymentSeconds = GetRemainingPaymentSeconds(
                 reservation.Status,

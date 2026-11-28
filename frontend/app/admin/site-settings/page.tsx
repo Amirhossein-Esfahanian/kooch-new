@@ -1,5 +1,6 @@
 "use client";
 
+import { refreshSiteCurrencyLabel, useSiteCurrencyLabel } from "@/lib/currency";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
@@ -305,6 +306,7 @@ function sectionScrollOffset(navigation: HTMLElement) {
 }
 
 export default function AdminSiteSettingsPage() {
+  const currencyLabel = useSiteCurrencyLabel();
   const {
     authenticated,
     loading: sessionLoading,
@@ -710,6 +712,9 @@ export default function AdminSiteSettingsPage() {
           result.kind === "pricing",
       );
 
+      if (updatedSettings.some(result => result.updated.key === "pricing.currencyLabel")) {
+        void refreshSiteCurrencyLabel();
+      }
       if (updatedSettings.length > 0) {
         setSettings((current) =>
           current.map(
@@ -1024,6 +1029,7 @@ export default function AdminSiteSettingsPage() {
           <KoochField
             error={pricingBoundsValidation.errors.minPrice}
             label="حداقل قیمت روزانه"
+            helperText={currencyLabel}
             required
           >
             <KoochInput
@@ -1047,6 +1053,7 @@ export default function AdminSiteSettingsPage() {
           <KoochField
             error={pricingBoundsValidation.errors.maxPrice}
             label="حداکثر قیمت روزانه"
+            helperText={currencyLabel}
             required
           >
             <KoochInput

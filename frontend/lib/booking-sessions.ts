@@ -180,6 +180,7 @@ export interface AccountBookingSessionCreateResponse {
   sessionCode: string;
   propertyId: number;
   currency: string;
+  currencyLabel?: string | null;
   reservations: Array<{
     reservationId: number;
     reservationNumber: string;
@@ -190,6 +191,7 @@ export interface AccountBookingSessionCreateResponse {
     status: string;
     finalAmount: number;
     currency: string;
+    currencyLabel?: string | null;
   }>;
 }
 
@@ -221,6 +223,7 @@ export interface AccountBookingSession {
   property: { propertyId: number; name: string; slug: string };
   primaryGuest?: AccountBookingSessionPrimaryGuestResponse | null;
   currency: string;
+  currencyLabel?: string | null;
   expectedArrivalTime?: string | null;
   expectedArrivalDayOffset?: 0 | 1 | null;
   receptionCoordinationRequired?: boolean;
@@ -234,6 +237,7 @@ export interface AccountBookingSession {
     status: string;
     amount: number;
     currency: string;
+    currencyLabel?: string | null;
     provider: string | null;
     appliedAtUtc: string | null;
   } | null;
@@ -250,6 +254,7 @@ export interface AccountBookingSession {
     paymentExpiresAtUtc: string | null;
     finalAmount: number;
     currency: string;
+    currencyLabel?: string | null;
   }>;
 }
 
@@ -263,6 +268,7 @@ export interface AccountBookingSessionListItem {
   reservationCount: number;
   totalAmount: number;
   currency: string;
+  currencyLabel?: string | null;
   derivedStatus: string;
   paymentStatus: string | null;
   paymentDeadlineUtc: string | null;

@@ -34,6 +34,7 @@ export interface AccountReservation {
   paidAmount: number;
   remainingAmount: number;
   currency: string;
+  currencyLabel?: string | null;
   status: AccountReservationStatus;
   createdAtUtc?: string | null;
   paymentExpiresAtUtc?: string | null;

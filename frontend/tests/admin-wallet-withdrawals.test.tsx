@@ -112,7 +112,7 @@ describe("Admin wallet withdrawals", () => {
     expect(api).toHaveBeenCalledWith("/admin/wallet/withdrawals?page=1&pageSize=20");
     expect(document.querySelector('[data-permission="ManagePayments"]')).not.toBeNull();
     expect(screen.queryByText(/WalletAccountId|WalletLotId|WalletEntryId|UserId/)).toBeNull();
-    expect(screen.getByText("IRR")).not.toBeNull();
+    expect(screen.getByText("تومان")).not.toBeNull();
   });
 
   it("filters on the server, resets page, and paginates", async () => {

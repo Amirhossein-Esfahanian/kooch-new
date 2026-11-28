@@ -25,14 +25,14 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); });
 
-it("shows original amounts, actual API currencies and dates without claiming remaining balance or spendability", async () => {
+it("shows original amounts with the configured title and dates without claiming remaining balance or spendability", async () => {
   mocks.api.mockResolvedValue(history([gift, { ...gift, title: "هدیه دوم", currency: "EUR", grantedAmount: 25, expiresAtUtc: "2099-01-01T10:00:00Z" }]));
   render(<WelcomeGiftsPage />);
   const cards = await screen.findAllByRole("listitem");
   expect(within(cards[0]).getByText("مبلغ اولیه هدیه")).toBeTruthy();
   expect(within(cards[0]).getByText("۱٬۲۵۰٬۰۰۰", { exact: false })).toBeTruthy();
-  expect(within(cards[0]).getByText("IRR").getAttribute("dir")).toBe("ltr");
-  expect(within(cards[1]).getByText("EUR")).toBeTruthy();
+  expect(within(cards[0]).getByText("تومان")).toBeTruthy();
+  expect(within(cards[1]).getByText("تومان")).toBeTruthy();
   expect(within(cards[0]).getByText("منقضی‌شده")).toBeTruthy();
   expect(within(cards[1]).queryByText("منقضی‌شده")).toBeNull();
   expect(screen.queryByText(/قابل مصرف|قابل‌مصرف|قابل استفاده$/, { exact: true })).toBeNull();

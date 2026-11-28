@@ -6,12 +6,13 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochTable, KoochTableHeader, KoochTableHead, KoochTableBody, KoochTableRow, KoochTableCell } from "@/components/KoochTable";
 import { apiRequest } from "@/lib/owner-api";
 import { formatNumber } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { auditValue, type AdminAuditLog, type AdminPriceChangePage } from "@/lib/admin-audit-logs";
 
 const stayDate = new Intl.DateTimeFormat("fa-IR", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" });
 
 export function PriceAuditDetails({ row }: { row: AdminAuditLog }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [request, setRequest] = useState({ after: null as string | null, retry: 0 });
   const [data, setData] = useState<AdminPriceChangePage | null>(null);
   const [compact, setCompact] = useState(false);
@@ -45,8 +46,8 @@ export function PriceAuditDetails({ row }: { row: AdminAuditLog }) {
         <KoochTableHeader><KoochTableRow><KoochTableHead>تاریخ اقامت</KoochTableHead><KoochTableHead>قیمت قبل</KoochTableHead><KoochTableHead>قیمت بعد</KoochTableHead></KoochTableRow></KoochTableHeader>
         <KoochTableBody>{items.map((item) => <KoochTableRow key={item.date}>
           <KoochTableCell className="whitespace-nowrap"><time dateTime={item.date}>{stayDate.format(new Date(`${item.date}T00:00:00Z`))}</time></KoochTableCell>
-          <KoochTableCell className="whitespace-nowrap">{formatCurrency(item.previousPrice)}</KoochTableCell>
-          <KoochTableCell className="whitespace-nowrap">{formatCurrency(item.newPrice)}</KoochTableCell>
+          <KoochTableCell className="whitespace-nowrap">{formatCurrency(item.previousPrice, { currencyLabel })}</KoochTableCell>
+          <KoochTableCell className="whitespace-nowrap">{formatCurrency(item.newPrice, { currencyLabel })}</KoochTableCell>
         </KoochTableRow>)}</KoochTableBody>
       </KoochTable> : data && !loading && !error ? <p className="text-sm text-muted-foreground">جزئیات تغییر قیمت ثبت نشده است.</p> : null}
       {loading && <p role="status" className="text-sm text-muted-foreground">در حال دریافت تغییرات قیمت…</p>}

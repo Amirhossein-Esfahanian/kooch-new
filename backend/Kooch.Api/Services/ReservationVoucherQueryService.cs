@@ -45,6 +45,7 @@ public sealed class ReservationVoucherQueryService(
                 AdultCount = voucher.AdultCountSnapshot,
                 ChildCount = voucher.ChildCountSnapshot,
                 GrossAmount = voucher.GrossAmount,
+                CurrencyLabel = voucher.Reservation.CurrencyLabel,
                 Currency = voucher.Currency
             })
             .SingleOrDefaultAsync(cancellationToken)
@@ -105,6 +106,7 @@ public sealed class ReservationVoucherQueryService(
                 AdultCount = voucher.AdultCountSnapshot,
                 ChildCount = voucher.ChildCountSnapshot,
                 GrossAmount = voucher.GrossAmount,
+                CurrencyLabel = voucher.Reservation.CurrencyLabel,
                 Currency = voucher.Currency,
                 CommissionRate = voucher.CommissionRate,
                 CommissionAmount = voucher.CommissionAmount,

@@ -19,6 +19,7 @@ export interface OwnerVoucher {
   childCount: number;
   grossAmount: number;
   currency: string;
+  currencyLabel?: string | null;
   commissionRate: number;
   commissionAmount: number;
   propertyPayableAmount: number;

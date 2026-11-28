@@ -16,7 +16,7 @@ import {
   KoochTableFilterDialog, KoochTableHead, KoochTableHeader, KoochTableRow,
 } from "@/components/KoochTable";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { apiRequest } from "@/lib/owner-api";
 import { canViewOwnerMenuItem } from "@/lib/property-menu-permissions";
 
@@ -51,9 +51,6 @@ const paymentMethodLabels = {
   BankTransfer: "انتقال بانکی", CardToCard: "کارت به کارت", Other: "سایر",
 };
 
-function money(amount: number, currency: string) {
-  return formatCurrency(amount, { currencyLabel: currency });
-}
 
 function errorText(error: unknown) {
   return error instanceof Error ? error.message : "دریافت سوابق تسویه انجام نشد.";
@@ -66,6 +63,8 @@ function StatusBadge({ status }: { status: SettlementStatus }) {
 }
 
 function SettlementHistory() {
+  const currencyLabel = useSiteCurrencyLabel();
+  const money = (amount: number) => formatCurrency(amount, { currencyLabel });
   const propertyId = Number(useParams<{ id: string }>().id);
   const { propertyName, effectivePermissions } = useOwnerProperty();
   const allowed = canViewOwnerMenuItem(effectivePermissions, "Financial");
@@ -173,7 +172,7 @@ function SettlementHistory() {
             : result.items.map(item => <KoochTableRow key={item.settlementNumber}>
               <KoochTableCell><bdi dir="ltr">{item.settlementNumber}</bdi></KoochTableCell>
               <KoochTableCell><StatusBadge status={item.status} /></KoochTableCell>
-              <KoochTableCell className="whitespace-nowrap tabular-nums">{money(item.totalAmount, item.currency)}</KoochTableCell>
+              <KoochTableCell className="whitespace-nowrap tabular-nums">{money(item.totalAmount)}</KoochTableCell>
               <KoochTableCell>{formatNumber(item.itemCount)}</KoochTableCell>
               <KoochTableCell className="whitespace-nowrap">{formatDate(item.oldestPayableDueDate)}</KoochTableCell>
               <KoochTableCell className="whitespace-nowrap">{formatDate(item.paidAtUtc)}</KoochTableCell>
@@ -194,7 +193,7 @@ function SettlementHistory() {
       title="جزئیات تسویه" size="lg" className="!h-auto !max-h-[90vh] !max-w-[800px]" bodyClassName="!overflow-hidden">
       {detailLoading ? <p role="status">در حال بارگذاری…</p> : detailError ? <p role="alert">{detailError}</p> : detail && <div className="grid gap-3" dir="rtl">
         <div className="flex flex-wrap items-center gap-2 text-sm"><span>تسویه <bdi dir="ltr">{detail.settlementNumber}</bdi></span><StatusBadge status={detail.status} /></div>
-        <p className="font-bold">مبلغ کل: {money(detail.totalAmount, detail.currency)}</p>
+        <p className="font-bold">مبلغ کل: {money(detail.totalAmount)}</p>
         <dl className="grid gap-3 text-sm sm:grid-cols-2">
           <div><dt className="text-muted-foreground">زمان ایجاد</dt><dd>{formatDateTime(detail.createdAtUtc)}</dd></div>
           <div><dt className="text-muted-foreground">قدیمی‌ترین سررسید</dt><dd>{formatDate(detail.oldestPayableDueDate)}</dd></div>
@@ -209,7 +208,7 @@ function SettlementHistory() {
             <KoochTableBody>{detail.items.map((item, index) => <KoochTableRow key={`${item.reservationNumber ?? "legacy"}-${index}`}>
               <KoochTableCell>{item.reservationNumber ? <bdi dir="ltr">{item.reservationNumber}</bdi> : <span className="text-muted-foreground">شماره رزرو در سوابق موجود نیست</span>}</KoochTableCell>
               <KoochTableCell>{formatDate(item.payableDueDate)}</KoochTableCell>
-              <KoochTableCell className="whitespace-nowrap">{money(item.amount, detail.currency)}</KoochTableCell>
+              <KoochTableCell className="whitespace-nowrap">{money(item.amount)}</KoochTableCell>
             </KoochTableRow>)}</KoochTableBody></KoochTable>
         </div>
         {detail.canViewReceipt && <Link href={receiptHref(detail.settlementNumber)} className="justify-self-start text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">مشاهده رسید</Link>}

@@ -22,11 +22,11 @@ const voucher: OwnerVoucher = {
   issuedAtUtc: "2026-09-20T09:30:00Z", propertyName: "خانه کاشان", guestName: "مریم احمدی",
   roomTypeName: "اتاق دو نفره", roomName: "بهار", checkIn: "2026-09-25", checkOut: "2026-09-28",
   hasExplicitRatePlan: false, ratePlanName: null, mealPlanName: null,
-  nights: 3, adultCount: 2, childCount: 1, currency: "IRR", grossAmount: 1000000,
+  nights: 3, adultCount: 2, childCount: 1, currency: "IRR", currencyLabel: "عنوان رزرو", grossAmount: 1000000,
   // Intentionally not recomputable: the UI must present persisted values verbatim.
   commissionRate: 12.5, commissionAmount: 123456, propertyPayableAmount: 876543,
 };
-const money = (amount: number) => `${new Intl.NumberFormat("fa-IR").format(amount)} ریال`;
+const money = (amount: number) => `${new Intl.NumberFormat("fa-IR").format(amount)} عنوان رزرو`;
 const doc = () => screen.getByRole("article", { name: "سند ووچر رزرو" });
 
 beforeEach(() => { request.mockReset(); });
@@ -204,11 +204,11 @@ describe("read-only reservation vouchers", () => {
     expect(screen.queryByRole("article")).not.toBeTruthy();
   });
 
-  it("preserves other stored currencies without site-currency fallback", async () => {
+  it("uses the stored display title rather than interpreting the internal currency code", async () => {
     request.mockResolvedValue({ ...voucher, currency: "EUR", roomName: null });
     render(<GuestVoucherView reservationNumber="R-271946" />);
     await screen.findByRole("article", { name: "سند ووچر رزرو" });
-    expect((doc()).textContent).toContain("۱٬۰۰۰٬۰۰۰ EUR");
+    expect((doc()).textContent).toContain("۱٬۰۰۰٬۰۰۰ عنوان رزرو");
     expect(within(doc()).queryByText("اتاق", { exact: true })).toBeNull();
   });
 

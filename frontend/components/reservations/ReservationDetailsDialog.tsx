@@ -124,6 +124,7 @@ export interface AdminManualPaymentCreatePayload {
 }
 
 export interface AdminManualPayment extends AdminManualPaymentCreatePayload {
+  currencyLabel?: string | null;
   paymentId: number;
   reservationId: number;
   status: "Pending" | "Successful" | "Failed" | "Refunded";
@@ -489,8 +490,7 @@ function DetailSection({
   );
 }
 
-function TimelineSection({ events, journey = false }: { events: ReservationTimelineEvent[]; journey?: boolean }) {
-  const currencyLabel = useSiteCurrencyLabel();
+function TimelineSection({ events, journey = false, currencyLabel }: { events: ReservationTimelineEvent[]; journey?: boolean; currencyLabel: string }) {
   const displayedEvents = journey
     ? [...events].sort((a, b) => Date.parse(a.timestampUtc) - Date.parse(b.timestampUtc))
     : events;
@@ -893,7 +893,7 @@ function ReservationCancellationDialog({
   reservation: ReservationTableItem;
   financial?: ReservationCancellationFinancialState | null;
 }) {
-  const currency = financial?.currency || reservation.currency;
+  const currencyLabel = useSiteCurrencyLabel(reservation.currencyLabel);
   const cancelRef = useRef<HTMLButtonElement>(null);
   const reviewRef = useRef<HTMLButtonElement>(null);
   const [confirmationReady, setConfirmationReady] = useState(false);
@@ -954,11 +954,11 @@ function ReservationCancellationDialog({
     ? grossCents !== null && sourceRows.length > 0 && sourceRows.every((r) => r.valid) &&
       propertyCents !== null && koochCents !== null && forfeitedCents !== null && fundingTotal === grossCents
     : grossCents !== null && splitCents === grossCents;
-  const displayMoney = (amount: number | null, code = currency) =>
-    toPersianDigits(formatCurrency(amount, { currencyLabel: code === "IRR" ? "ریال" : code || "واحد نامشخص" }));
+  const displayMoney = (amount: number | null) =>
+    toPersianDigits(formatCurrency(amount, { currencyLabel }));
   const financialMoney = (amount: number | null | undefined) => amount == null
     ? <span className={cancellationStyles.unknown}>نامشخص</span> : displayMoney(amount);
-  const tableCurrencyLabel = currency === "IRR" ? "ریال" : currency;
+  const tableCurrencyLabel = currencyLabel;
   const tableMoney = (amount: number | null | undefined) => amount == null
     ? <span className={cancellationStyles.unknown}>نامشخص</span>
     : tableCurrencyLabel ? toPersianDigits(formatCurrency(amount, { showCurrency: false })) : displayMoney(amount);
@@ -1103,7 +1103,7 @@ function ReservationCancellationDialog({
       ["وضعیت", statusLabels[reservation.status] ?? reservation.status],
       ["ورود", formatDate(reservation.checkInDate)],
       ["خروج", formatDate(reservation.checkOutDate)],
-      ["مبلغ رزرو", displayMoney(reservation.finalAmount ?? reservation.totalPrice ?? null, reservation.currency)],
+      ["مبلغ رزرو", displayMoney(reservation.finalAmount ?? reservation.totalPrice ?? null)],
       ...(paid && financial.grossPaidAmount != null && financial.grossPaidAmount > 0
         ? [["مبلغ پرداخت‌شده", displayMoney(financial.grossPaidAmount)]] : []),
     ]).map(([label, value]) => <dl key={label} className={cancellationStyles.summaryItem}>
@@ -1369,7 +1369,7 @@ function ReservationRefundDialog({
   open: boolean;
   reservation: ReservationTableItem;
 }) {
-  const currencyLabel = useSiteCurrencyLabel();
+  const currencyLabel = useSiteCurrencyLabel(reservation.currencyLabel);
   const [referenceNumber, setReferenceNumber] = useState("");
   const [refundDate, setRefundDate] = useState<string | null>(localIsoToday());
   const [refundTime, setRefundTime] = useState(() => {
@@ -1482,6 +1482,7 @@ function ManualPaymentCreateDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const currency = reservation.currency?.trim().toUpperCase() ?? "";
+  const currencyLabel = useSiteCurrencyLabel(reservation.currencyLabel);
   const fixedCurrencyId = useId();
 
   useEffect(() => {
@@ -1551,7 +1552,7 @@ function ManualPaymentCreateDialog({
       <div className="mb-3 grid gap-2 text-sm">
         <p>ثبت دریافت برای رزرو <bdi>{reservation.reservationNumber}</bdi></p>
         <p>ماندهٔ این رزرو: {typeof reservation.remainingAmount === "number" ? formatCurrency(reservation.remainingAmount, {
-          currencyLabel: currency === "IRR" ? "ریال" : currency || "واحد نامشخص",
+          currencyLabel,
         }) : "نامشخص"}</p>
         <p className="text-muted-foreground">این رسید برای بررسی ثبت می‌شود؛ ثبت آن به‌تنهایی تأیید پرداخت یا رزرو نیست. این اقدام از مهمان وجه برداشت نمی‌کند.</p>
         {orderReceiptAction && <div className="grid justify-items-start gap-2 border-b border-border pb-3">
@@ -1577,7 +1578,7 @@ function ManualPaymentCreateDialog({
           />
         </KoochField>
         <span id={fixedCurrencyId} className="mt-7 inline-flex h-10 shrink-0 items-center text-xs text-muted-foreground" aria-label="واحد پول ثابت">
-          {currency === "IRR" ? "ریال" : currency || "واحد نامشخص"}
+          {currencyLabel}
         </span>
         </div>
         <KoochField label="روش پرداخت" required>
@@ -1736,11 +1737,8 @@ export function ReservationDetailsDialog({
   const tabsId = useId();
   const [copyFeedback, setCopyFeedback] = useState<{ url: string; message: string } | null>(null);
   const [copyingLink, setCopyingLink] = useState(false);
-  const currencyLabel = reservation?.source === "AdminCreated" && reservation.currency
-    ? reservation.currency === "IRR" ? "ریال" : reservation.currency
-    : siteCurrencyLabel;
-  const cancellationCurrency = reservation?.cancellationFinancial?.currency ?? reservation?.currency;
-  const cancellationCurrencyLabel = cancellationCurrency === "IRR" ? "ریال" : cancellationCurrency || "واحد نامشخص";
+  const currencyLabel = reservation?.currencyLabel?.trim() || siteCurrencyLabel;
+  const cancellationCurrencyLabel = currencyLabel;
   const guestName = reservation?.guestName ?? reservation?.guestFullName ?? "-";
   const guestEmail = reservation?.guestEmail ?? reservation?.email ?? "-";
   const identityNumber =
@@ -2373,9 +2371,9 @@ export function ReservationDetailsDialog({
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div className="flex flex-wrap items-center gap-2">
                               <strong className="text-sm text-foreground">
-                                {toPersianDigits(formatCurrency(payment.amount, { currencyLabel }))}
+                                {toPersianDigits(formatCurrency(payment.amount, { currencyLabel: payment.currencyLabel?.trim() || currencyLabel, showCurrency: false }))}
                               </strong>
-                              <span className="text-xs font-semibold text-muted-foreground">{payment.currency}</span>
+                              <span className="text-xs font-semibold text-muted-foreground">{payment.currencyLabel?.trim() || currencyLabel}</span>
                             </div>
                             <KoochBadge
                               variant={
@@ -2418,7 +2416,7 @@ export function ReservationDetailsDialog({
             )}
 
 </>,
-    activity: <>            <TimelineSection events={timelineEvents} journey={presentation === "page"} />
+    activity: <>            <TimelineSection events={timelineEvents} journey={presentation === "page"} currencyLabel={currencyLabel} />
             {showAdminActivities && typeof (reservation.reservationId ?? reservation.id) === "number" && (
               <AdminActivitySection
                 deduplicate={presentation === "page"}

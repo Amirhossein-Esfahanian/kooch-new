@@ -6,6 +6,7 @@ namespace Kooch.Api.Dtos.Payments;
 
 public class ReservationPaymentPreparationResponse
 {
+    public string? CurrencyLabel { get; set; }
     public bool IsValid { get; set; }
     public string? InvalidReason { get; set; }
     public int? ReservationId { get; set; }

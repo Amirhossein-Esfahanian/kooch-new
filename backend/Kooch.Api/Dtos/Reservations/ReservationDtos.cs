@@ -10,6 +10,7 @@ public class ManualBookingCreateResponse
     public int BookingSessionId { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     public decimal TotalAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = string.Empty;
     public IReadOnlyList<ReservationResponse> Reservations { get; set; } = [];
 }
@@ -46,6 +47,7 @@ public class ReservationListItemResponse
     public decimal FinalAmount { get; set; }
     public decimal PaidAmount { get; set; }
     public decimal RemainingAmount { get; set; }
+    public string? CurrencyLabel { get; set; }
     public string Currency { get; set; } = "IRR";
     public ReservationStatus Status { get; set; }
     public bool HasPendingCancellationRequest { get; set; }

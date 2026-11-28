@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import { getOwnerVoucher, type OwnerVoucher } from "@/lib/owner-voucher";
 import { formatNumber } from "@/lib/account-reservations";
 import { VoucherDocument, VoucherField, voucherMoney } from "./VoucherDocument";
@@ -14,14 +15,15 @@ export function OwnerVoucherView({ propertyId, reservationId }: { propertyId: nu
 
 export function FinancialVoucherView({ load }: { load: (signal: AbortSignal) => Promise<OwnerVoucher> }) {
   const { state, retry } = useVoucher(load);
+  const currencyLabel = useSiteCurrencyLabel(state.status === "ready" ? state.data.currencyLabel : null);
   if (state.status !== "ready") return <VoucherQueryState {...state} retry={retry} />;
   const voucher = state.data;
   return (
     <VoucherDocument voucher={voucher} audience="financial">
-      <VoucherField label="مبلغ پرداخت‌شده مهمان">{voucherMoney(voucher.grossAmount, voucher.currency)}</VoucherField>
+      <VoucherField label="مبلغ پرداخت‌شده مهمان">{voucherMoney(voucher.grossAmount, currencyLabel)}</VoucherField>
       <VoucherField label="نرخ کمیسیون Kooch">{formatNumber(voucher.commissionRate)}٪</VoucherField>
-      <VoucherField label="کمیسیون Kooch">{voucherMoney(voucher.commissionAmount, voucher.currency)}</VoucherField>
-      <VoucherField label="مبلغ قابل تسویه به اقامتگاه" prominent>{voucherMoney(voucher.propertyPayableAmount, voucher.currency)}</VoucherField>
+      <VoucherField label="کمیسیون Kooch">{voucherMoney(voucher.commissionAmount, currencyLabel)}</VoucherField>
+      <VoucherField label="مبلغ قابل تسویه به اقامتگاه" prominent>{voucherMoney(voucher.propertyPayableAmount, currencyLabel)}</VoucherField>
     </VoucherDocument>
   );
 }

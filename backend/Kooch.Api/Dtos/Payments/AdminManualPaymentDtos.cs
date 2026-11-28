@@ -26,6 +26,7 @@ public sealed class AdminManualPaymentRejectRequest
 
 public sealed class AdminManualPaymentResponse
 {
+    public string? CurrencyLabel { get; set; }
     public int PaymentId { get; set; }
     public int ReservationId { get; set; }
     public decimal Amount { get; set; }
@@ -57,6 +58,7 @@ public sealed class AdminManualPaymentResponse
 
 public sealed class AdminManualPaymentDetailsResponse
 {
+    public string? CurrencyLabel { get; set; }
     public int PaymentId { get; set; }
     public int ReservationId { get; set; }
     public decimal Amount { get; set; }
