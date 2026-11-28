@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ReservationDetailsDialog,
   type AdminManualPayment,
@@ -61,6 +61,7 @@ function renderDialog(props: Partial<ComponentProps<typeof ReservationDetailsDia
 }
 
 describe("Admin manual payment reservation UI", () => {
+  afterEach(() => { vi.restoreAllMocks(); });
   it("shows create only for an eligible reservation and exposes no evidence field", async () => {
     renderDialog({ onCreateManualPayment: vi.fn() });
 
@@ -68,9 +69,40 @@ describe("Admin manual payment reservation UI", () => {
 
     const createDialog = await screen.findByRole("dialog", { name: "ثبت پرداخت دستی" });
     expect((within(createDialog).getByLabelText(/^مبلغ/) as HTMLInputElement).value).toBe("200000");
-    expect((within(createDialog).getByLabelText(/^واحد پول/) as HTMLInputElement).value).toBe("IRR");
-    expect((within(createDialog).getByLabelText(/^واحد پول/) as HTMLInputElement).readOnly).toBe(true);
+    expect(within(createDialog).queryByLabelText(/^واحد پول$/)).toBeNull();
+    expect(within(createDialog).getByLabelText("واحد پول ثابت").textContent).toBe("ریال");
     expect(within(createDialog).queryByLabelText(/مدرک|فایل|رسید/)).toBeNull();
+  });
+
+  it("floats the payment calendar within dialog focus scope, flips upward and clamps horizontal position", async () => {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.hasAttribute("popover")
+        ? { top: 0, right: 300, bottom: 320, left: 0, width: 300, height: 320 } as DOMRect
+        : { top: window.innerHeight - 80, right: 220, bottom: window.innerHeight - 40, left: 20, width: 200, height: 40 } as DOMRect;
+    });
+    renderDialog({ onCreateManualPayment: vi.fn() });
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت پرداخت دستی" }));
+    const dialog = await screen.findByRole("dialog", { name: "ثبت پرداخت دستی" });
+    const trigger = within(dialog).getByText("تاریخ پرداخت").closest("div")!.querySelector("button")!;
+    fireEvent.click(trigger);
+    const popup = dialog.querySelector<HTMLElement>('[popover="manual"]')!;
+    expect(popup).toBeTruthy();
+    await waitFor(() => expect(popup.style.visibility).toBe("visible"));
+    expect(popup.style.left).toBe("16px");
+    expect(Number.parseFloat(popup.style.top)).toBeLessThan(window.innerHeight - 80);
+    expect(popup.className).toContain("fixed");
+    expect(popup.getAttribute("dir")).toBe("rtl");
+    fireEvent.keyDown(popup, { key: "Escape" });
+    expect(dialog.querySelector('[popover="manual"]')).toBeNull();
+    expect(screen.getByRole("dialog", { name: "ثبت پرداخت دستی" })).toBeTruthy();
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(within(dialog).getByLabelText(/^مبلغ/));
+    expect(dialog.querySelector('[popover="manual"]')).toBeNull();
+    fireEvent.click(trigger);
+    const day = dialog.querySelector<HTMLButtonElement>('button[data-calendar-date]:not([disabled])')!;
+    fireEvent.click(day);
+    expect(dialog.querySelector('[popover="manual"]')).toBeNull();
   });
 
   it("does not show create for an ineligible reservation", async () => {

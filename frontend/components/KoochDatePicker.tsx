@@ -34,8 +34,8 @@ export type KoochSingleDatePickerProps = BaseDatePickerProps & {
   labels?: SharedSingleDateLabels;
   size?: "default" | "compact";
   autoConfirmOnSelect?: boolean;
-  /** Render the single-date popup above dialog overflow. */
-  portal?: boolean;
+  /** true portals to body; "dialog" escapes overflow without leaving the dialog focus scope. */
+  portal?: boolean | "dialog";
 };
 
 export type KoochDateRangePickerProps = BaseDatePickerProps & {

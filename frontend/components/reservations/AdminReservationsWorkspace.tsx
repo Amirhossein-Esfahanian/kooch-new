@@ -847,9 +847,8 @@ export function AdminReservationsWorkspace({ reservationId }: { reservationId?: 
         />
 
         {canReviewPayments && activeListTab === "reservations" && <ManualPaymentReviewQueue key={`summary-${filters.propertyId}`}
-          summaryOnly propertyId={filters.propertyId ? Number(filters.propertyId) : undefined}
-          refreshKey={reviewQueueRefresh} onTotalCountChange={setPendingReviewCount}
-          onOpenReview={() => { activateListTab("payments"); tabButtons.current[1]?.focus(); }} />}
+          summaryOnly countOnly propertyId={filters.propertyId ? Number(filters.propertyId) : undefined}
+          refreshKey={reviewQueueRefresh} onTotalCountChange={setPendingReviewCount} />}
         <div role="tablist" aria-label="مدیریت رزروها" dir="rtl" className={styles.tabs}>
           {listTabs.filter(tab => tab.value === "reservations" || canReviewPayments).map((tab, index) => <button
             key={tab.value} type="button" role="tab" id={`${tabsId}-${tab.value}-tab`}

@@ -45,15 +45,16 @@ describe("Admin reservations review tab integration", () => {
     });
   });
 
-  it("defaults to reservations, opens reviews from the compact notice and preserves filters and both page states", async () => {
+  it("keeps the tab count without a notice and preserves filters and both page states", async () => {
     window.history.replaceState({}, "", "/admin/reservations?propertyId=3&status=Confirmed&page=4");
     render(<AdminReservationsPage />);
     expect(screen.getByRole("tab", { name: "همه رزروها" }).getAttribute("aria-selected")).toBe("true");
     expect(screen.getByText("صفحه رزروها 4")).toBeTruthy();
-    await screen.findByText("پرداخت‌های در انتظار بررسی · ۲۵");
+    await screen.findByRole("tab", { name: /بررسی پرداخت‌ها\s*۲۵/ });
+    expect(screen.queryByText("پرداخت‌های در انتظار بررسی · ۲۵")).toBeNull();
     expect(screen.queryByRole("link", { name: "بررسی پرداخت R-37" })).toBeNull();
     expect(mocks.request.mock.calls.some(([path]) => String(path).includes("pageSize=20"))).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "بررسی پرداخت‌ها" }));
+    fireEvent.click(screen.getByRole("tab", { name: /بررسی پرداخت‌ها/ }));
     const link = await screen.findByRole("link", { name: "بررسی پرداخت R-37" });
     expect(mocks.push).toHaveBeenLastCalledWith("/admin/reservations?propertyId=3&status=Confirmed&page=4&tab=payments", { scroll: false });
     expect(screen.queryByText("پرداخت‌های در انتظار بررسی · ۲۵")).toBeNull();

@@ -9,6 +9,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { useAnchoredPopover } from "@/lib/use-anchored-popover";
 import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
@@ -58,8 +59,8 @@ export interface SharedSingleDatePickerProps {
    * Clicking outside closes the popover without changing the confirmed value.
    */
   autoConfirmOnSelect?: boolean;
-  /** Render the popup in document.body, positioned beside the trigger. */
-  portal?: boolean;
+  /** true portals to body; "dialog" uses the shared top-layer popover while retaining dialog focus scope. */
+  portal?: boolean | "dialog";
   /** Persian label overrides. */
   labels?: SharedSingleDateLabels;
   /** Confirm button text. */
@@ -218,6 +219,7 @@ export function SharedSingleDatePicker({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const [dialogPosition] = useAnchoredPopover(open && portal === "dialog", triggerRef, popoverRef);
   const [portalPosition, setPortalPosition] = useState<{
     top: number;
     left: number;
@@ -280,7 +282,7 @@ export function SharedSingleDatePicker({
   }, [size]);
 
   useLayoutEffect(() => {
-    if (!open || !portal) return;
+    if (!open || portal !== true) return;
     updatePortalPosition();
     window.addEventListener("resize", updatePortalPosition);
     window.addEventListener("scroll", updatePortalPosition, true);
@@ -331,10 +333,11 @@ export function SharedSingleDatePicker({
       </button>
 
       {open && (
-        <PopupHost portal={portal}>
+        <PopupHost portal={portal === true}>
         <div
           ref={popoverRef}
           dir="rtl"
+          popover={portal === "dialog" ? "manual" : undefined}
           className={portal ? portalPopoverClass : popoverClass}
           onKeyDown={portal ? (event) => {
             if (event.key === "Escape") {
@@ -344,9 +347,10 @@ export function SharedSingleDatePicker({
             }
           } : undefined}
           style={portal ? {
-            top: portalPosition?.top ?? 0,
-            left: portalPosition?.left ?? 0,
-            visibility: portalPosition ? "visible" : "hidden",
+            ...(portal === "dialog" ? { inset: "auto", margin: 0, maxHeight: dialogPosition?.maxHeight } : {}),
+            top: (portal === "dialog" ? dialogPosition : portalPosition)?.top ?? 0,
+            left: (portal === "dialog" ? dialogPosition : portalPosition)?.left ?? 0,
+            visibility: (portal === "dialog" ? dialogPosition : portalPosition) ? "visible" : "hidden",
           } : undefined}
         >
           <div

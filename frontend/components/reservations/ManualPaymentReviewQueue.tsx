@@ -34,10 +34,11 @@ const methods: Record<string, string> = { CardToCard: "کارت‌به‌کار�
   Satna: "ساتنا", AccountTransfer: "انتقال حساب", Other: "سایر" };
 
 export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo, summaryOnly = false,
-  page: controlledPage, onPageChange, onTotalCountChange, onOpenReview }: {
+  page: controlledPage, onPageChange, onTotalCountChange, onOpenReview, countOnly = false }: {
   propertyId?: number; refreshKey?: number; returnTo?: string; summaryOnly?: boolean;
   page?: number; onPageChange?: (page: number) => void;
   onTotalCountChange?: (count: number) => void; onOpenReview?: () => void;
+  countOnly?: boolean;
 }) {
   const [localPage, setLocalPage] = useState(1);
   const page = summaryOnly ? 1 : controlledPage ?? localPage;
@@ -73,6 +74,7 @@ export function ManualPaymentReviewQueue({ propertyId, refreshKey = 0, returnTo,
     return () => window.removeEventListener("focus", refresh);
   }, []);
 
+  if (countOnly) return null;
   if (summaryOnly) {
     if (loading) return <p role="status" className="text-sm text-muted-foreground">در حال دریافت تعداد پرداخت‌های در انتظار بررسی...</p>;
     if (error) return <div role="alert" className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">

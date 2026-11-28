@@ -1482,6 +1482,7 @@ function ManualPaymentCreateDialog({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const currency = reservation.currency?.trim().toUpperCase() ?? "";
+  const fixedCurrencyId = useId();
 
   useEffect(() => {
     if (!open) return;
@@ -1559,10 +1560,12 @@ function ManualPaymentCreateDialog({
         </div>}
       </div>
       <form className="grid gap-4 md:grid-cols-2" id="manual-payment-form" onSubmit={submit}>
-        <KoochField error={errors.amount} label="مبلغ" required>
+        <div className="flex min-w-0 items-start gap-2">
+        <KoochField className="min-w-0 flex-1" error={errors.amount || errors.currency} label="مبلغ" required>
           <KoochInput
-            error={errors.amount}
+            error={errors.amount || errors.currency}
             inputMode="decimal"
+            aria-describedby={fixedCurrencyId}
             min="0"
             onChange={(event) => {
               setAmount(event.target.value);
@@ -1573,9 +1576,10 @@ function ManualPaymentCreateDialog({
             value={amount}
           />
         </KoochField>
-        <KoochField error={errors.currency} label="واحد پول" required>
-          <KoochInput error={errors.currency} readOnly value={currency} />
-        </KoochField>
+        <span id={fixedCurrencyId} className="mt-7 inline-flex h-10 shrink-0 items-center text-xs text-muted-foreground" aria-label="واحد پول ثابت">
+          {currency === "IRR" ? "ریال" : currency || "واحد نامشخص"}
+        </span>
+        </div>
         <KoochField label="روش پرداخت" required>
           <KoochSelect onChange={(event) => setMethod(event.target.value as ManualPaymentMethod)} value={method}>
             {manualPaymentMethodOptions.map((option) => (
@@ -1588,6 +1592,7 @@ function ManualPaymentCreateDialog({
             autoConfirmOnSelect
             label={null}
             mode="single"
+            portal="dialog"
             onChange={(value) => {
               setPaymentDate(value);
               setErrors((current) => ({ ...current, paymentDate: "" }));
