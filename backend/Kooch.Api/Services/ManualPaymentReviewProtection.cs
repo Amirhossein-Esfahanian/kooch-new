@@ -6,6 +6,14 @@ namespace Kooch.Api.Services;
 
 internal static class ManualPaymentReviewProtection
 {
+    internal static DateTime? GetProtectionExpiry(Reservation reservation, Payment payment, ManualPaymentDetails details) =>
+        reservation.PaymentExpiresAtUtc is { } deadline &&
+        payment.ReservationId == reservation.Id && !payment.BookingSessionId.HasValue &&
+        payment.Channel == PaymentChannel.Manual && payment.Status == PaymentStatus.Pending &&
+        !payment.IsDeleted && !details.IsDeleted && details.VerificationStatus == ManualPaymentVerificationStatus.PendingVerification &&
+        payment.CreatedAtUtc != default && payment.CreatedAtUtc < deadline
+            ? deadline.AddHours(24) : null;
+
     internal static IQueryable<Payment> PendingReceipts(KoochDbContext context) => context.Payments.Where(payment =>
         payment.ReservationId.HasValue && !payment.BookingSessionId.HasValue && payment.Channel == PaymentChannel.Manual &&
         payment.Status == PaymentStatus.Pending && payment.CreatedAtUtc != default && payment.ManualDetails != null &&
@@ -13,11 +21,7 @@ internal static class ManualPaymentReviewProtection
 
     internal static bool Protects(Reservation reservation, Payment payment, ManualPaymentDetails details, DateTime now) =>
         reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
-        reservation.PaymentExpiresAtUtc is { } deadline && deadline > now.AddHours(-24) &&
-        payment.ReservationId == reservation.Id && !payment.BookingSessionId.HasValue &&
-        payment.Channel == PaymentChannel.Manual && payment.Status == PaymentStatus.Pending &&
-        !payment.IsDeleted && !details.IsDeleted && details.VerificationStatus == ManualPaymentVerificationStatus.PendingVerification &&
-        payment.CreatedAtUtc != default && payment.CreatedAtUtc < deadline;
+        GetProtectionExpiry(reservation, payment, details) is { } expiry && expiry > now;
 
     internal static Task<bool> HasProtectionAsync(KoochDbContext context, Reservation reservation, DateTime now, CancellationToken ct) =>
         reservation.Status != ReservationStatus.ApprovedAwaitingPayment ||

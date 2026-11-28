@@ -30,6 +30,7 @@ import {
   formatDateTime,
   formatDuration,
   formatNumber,
+  guestPaymentMessage,
   isPaymentEligible,
   statusLabels,
   statusVariant,
@@ -390,6 +391,9 @@ export default function AccountReservationDetailsPage() {
                 <p className="text-sm font-semibold text-muted-foreground">
                   {reservation.roomName || reservation.roomTypeName}
                 </p>
+                <p className="text-sm text-muted-foreground" role="status">
+                  {guestPaymentMessage(reservation)}
+                </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
@@ -409,13 +413,34 @@ export default function AccountReservationDetailsPage() {
                       پرداخت با لینک ارسال‌شده انجام می‌شود
                     </KoochButton>
                   )
-                ) : (
-                  <KoochButton disabled variant="outline">
-                    پرداخت لازم نیست
-                  </KoochButton>
+                ) : null}
+                {reservation.guestPaymentSummary?.canPayOrder && reservation.guestOrder && (
+                  <Link className="text-sm font-semibold text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2"
+                    href={`/account/booking-sessions/${encodeURIComponent(reservation.guestOrder.orderCode)}`}>
+                    بررسی پرداخت سفارش
+                  </Link>
                 )}
               </div>
             </KoochCard>
+
+            {reservation.guestOrder && (
+              <KoochCard className="grid gap-2" padding="sm" variant="muted">
+                <h2 className="text-sm font-bold">سفارش <bdi>{reservation.guestOrder.orderCode}</bdi></h2>
+                <p className="text-sm text-muted-foreground">
+                  {reservation.guestOrder.includesAllReservations
+                    ? `${formatNumber(reservation.guestOrder.reservations.length)} رزرو مرتبط با این سفارش`
+                    : "فقط رزروهای متعلق به حساب شما نمایش داده می‌شوند؛ این فهرست تمام اعضای سفارش نیست."}
+                </p>
+                <ul className="grid gap-2 text-sm">
+                  {reservation.guestOrder.reservations.map((member) => <li key={member.reservationNumber} className="flex flex-wrap items-center gap-2">
+                    <Link className="text-primary underline underline-offset-4 focus-visible:outline focus-visible:outline-2"
+                      href={`/account/reservations/${encodeURIComponent(member.reservationNumber)}`}><bdi>{member.reservationNumber}</bdi></Link>
+                    <span>{member.roomTypeName}</span>
+                    <span className="text-muted-foreground">{statusLabels[member.status] ?? member.status}</span>
+                  </li>)}
+                </ul>
+              </KoochCard>
+            )}
 
             <KoochCard className="grid gap-3" padding="sm" variant="muted">
               <h2 className="text-sm font-bold text-foreground">درخواست لغو رزرو</h2>
@@ -534,19 +559,51 @@ export default function AccountReservationDetailsPage() {
                 )}
               />
               <DetailItem
-                label="پرداخت‌شده"
+                label="پرداخت تأییدشده"
                 value={formatCurrency(reservation.paidAmount, {
                   currencyLabel,
                 })}
               />
               <DetailItem
-                label="باقی‌مانده"
+                label={reservation.status === "Cancelled" || reservation.status === "Expired" || reservation.status === "PaymentExpired"
+                  ? "مانده تاریخی (غیرقابل پرداخت)" : "مانده پرداخت‌نشده"}
                 value={formatCurrency(reservation.remainingAmount, {
                   currencyLabel,
                 })}
               />
+              {reservation.guestPaymentSummary && <>
+                <DetailItem label="رسید در انتظار بررسی (تأییدنشده)" value={formatCurrency(reservation.guestPaymentSummary.pendingReviewAmount, { currencyLabel })} />
+                <DetailItem label="مبلغ قابل پرداخت در حال حاضر" value={formatCurrency(reservation.guestPaymentSummary.collectibleAmount, { currencyLabel })} />
+              </>}
               <DetailItem label="واحد پول" value={currencyLabel} />
             </DetailSection>
+
+            {!!reservation.guestPaymentSummary?.manualReceipts.length && (
+              <KoochCard className="grid gap-3" padding="sm" variant="elevated" aria-label="رسیدهای پرداخت">
+                <h2 className="text-sm font-bold">رسیدهای پرداخت این رزرو</h2>
+                <p className="text-xs text-muted-foreground">مبالغ مربوط به همین رزرو هستند، نه مجموع سفارش. رسید تأییدنشده، پرداخت قطعی نیست.</p>
+                <ul className="grid divide-y divide-border">
+                  {reservation.guestPaymentSummary.manualReceipts.map((receipt, index) => <li key={index} className="grid gap-2 py-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <strong>{formatCurrency(receipt.amount, { currencyLabel: receipt.currencyLabel || currencyLabel })}</strong>
+                      <KoochBadge variant={receipt.verificationStatus === "Approved" ? "success" : receipt.verificationStatus === "Rejected" ? "destructive" : "warning"}>
+                        {receipt.verificationStatus === "Approved" ? "رسید تأییدشده" : receipt.verificationStatus === "Rejected" ? "رسید ردشده" : "در انتظار بررسی رسید"}
+                      </KoochBadge>
+                    </div>
+                    <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+                      <div><dt className="text-xs text-muted-foreground">روش پرداخت</dt><dd>{({ CardToCard: "کارت‌به‌کارت", BankTransfer: "واریز بانکی", Paya: "پایا", Satna: "ساتنا", AccountTransfer: "انتقال حساب", Other: "سایر" } as Record<string, string>)[receipt.method] ?? receipt.method}</dd></div>
+                      <div><dt className="text-xs text-muted-foreground">زمان ثبت رسید</dt><dd>{formatDateTime(receipt.registeredAtUtc)}</dd></div>
+                      {receipt.reference && <div><dt className="text-xs text-muted-foreground">بخش پایانی شماره پیگیری</dt><dd><bdi>{receipt.reference}</bdi></dd></div>}
+                    </dl>
+                    {receipt.hasActiveReviewProtection && <p className="text-muted-foreground">
+                      حفاظت موقت رزرو در زمان بررسی رسید تا {formatDateTime(receipt.reviewProtectionExpiresAtUtc)} فعال است؛ مهلت اصلی پرداخت تغییر نکرده است.
+                    </p>}
+                    {!receipt.hasActiveReviewProtection && receipt.verificationStatus === "PendingVerification" &&
+                      <p className="text-muted-foreground">این رسید حفاظت فعال برای رزرو ندارد و نیازمند پیگیری مالی است.</p>}
+                  </li>)}
+                </ul>
+              </KoochCard>
+            )}
 
             {reservation.reservationNumber === reservationNumber &&
               <ReservationCashbackSection key={reservationNumber} reservationNumber={reservationNumber} currencyLabel={currencyLabel} />}
@@ -583,7 +640,7 @@ export default function AccountReservationDetailsPage() {
                     ? paymentToken
                       ? "درگاه پرداخت هنوز فعال نشده است."
                       : "برای پرداخت از لینک ارسال‌شده استفاده کنید."
-                    : "برای این رزرو پرداختی لازم نیست."
+                    : guestPaymentMessage(reservation)
                 }
               />
             </DetailSection>

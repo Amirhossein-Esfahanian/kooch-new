@@ -41,6 +41,53 @@ export interface AccountReservation {
   isPaymentExpired?: boolean | null;
   isPaymentEligible?: boolean | null;
   remainingPaymentSeconds?: number | null;
+  guestPaymentSummary?: {
+    confirmedPaidAmount: number;
+    pendingReviewAmount: number;
+    unpaidAmount: number;
+    collectibleAmount: number;
+    usesOrderPayment: boolean;
+    canPayOrder: boolean;
+    manualReceipts: GuestManualReceipt[];
+  } | null;
+  guestOrder?: {
+    orderCode: string;
+    includesAllReservations: boolean;
+    reservations: { reservationNumber: string; roomTypeName: string; status: AccountReservationStatus }[];
+  } | null;
+}
+
+export interface GuestManualReceipt {
+  amount: number;
+  currencyLabel: string;
+  method: string;
+  reference: string | null;
+  registeredAtUtc: string;
+  verificationStatus: "PendingVerification" | "Approved" | "Rejected";
+  hasActiveReviewProtection: boolean;
+  reviewProtectionExpiresAtUtc: string | null;
+}
+
+export function guestPaymentMessage(reservation: AccountReservation) {
+  const receipts = reservation.guestPaymentSummary?.manualReceipts ?? [];
+  const pending = receipts.some((receipt) => receipt.verificationStatus === "PendingVerification");
+  if (reservation.status === "Cancelled") return "رزرو لغو شده است؛ مبالغ پرداخت‌شده سوابق مالی هستند و مانده قابل پرداخت نیست.";
+  if (reservation.status === "Expired" || reservation.status === "PaymentExpired") {
+    return pending
+      ? "رزرو منقضی شده و رسید پرداخت هنوز در انتظار بررسی است. پیگیری مالی لازم است؛ بررسی رسید، رزرو را خودکار بازنمی‌گرداند."
+      : "رزرو منقضی شده است و امکان پرداخت برای این رزرو فعال نیست.";
+  }
+  if (["Confirmed", "Paid", "Completed"].includes(reservation.status) &&
+      (reservation.guestPaymentSummary?.unpaidAmount ?? reservation.remainingAmount) === 0)
+    return "رزرو تأیید شده و مبلغ آن به‌طور کامل پرداخت شده است.";
+  if (pending) return "رسید پرداخت در انتظار بررسی است و هنوز پرداخت تأییدشده محسوب نمی‌شود.";
+  if (reservation.status === "PendingApproval") return "رزرو در انتظار تأیید اقامتگاه است؛ پرداخت هنوز فعال نیست.";
+  if (reservation.status === "Pending") return "رزرو ثبت شده و در انتظار بررسی و آماده‌سازی است؛ پرداخت هنوز فعال نیست.";
+  if (receipts.some((receipt) => receipt.verificationStatus === "Rejected"))
+    return "رسید پرداخت رد شده است؛ مبلغ این رسید جزو پرداخت‌های تأییدشده نیست. وضعیت رزرو و امکان پرداخت را جداگانه بررسی کنید.";
+  if (reservation.status === "ApprovedAwaitingPayment") return "رزرو در انتظار پرداخت است؛ پرداخت فقط تا مهلت مجاز و از مسیر فعال انجام می‌شود.";
+  if (reservation.status === "Rejected") return "درخواست رزرو رد شده است؛ امکان پرداخت فعال نیست.";
+  return "وضعیت رزرو و پرداخت‌های ثبت‌شده را در اطلاعات زیر بررسی کنید.";
 }
 
 export type AccountCancellationRequestStatus = "Pending" | "Resolved" | "Rejected";

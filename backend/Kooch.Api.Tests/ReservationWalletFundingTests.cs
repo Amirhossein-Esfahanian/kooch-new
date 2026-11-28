@@ -619,6 +619,11 @@ public sealed partial class ReservationWalletFundingTests
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);
+            // Account/admin JSON fields declare SQL Server's nvarchar(max) explicitly.
+            // Keep this isolated SQLite fixture provider-compatible without changing production mapping.
+            foreach (var property in builder.Model.GetEntityTypes().SelectMany(type => type.GetProperties())
+                         .Where(property => property.GetColumnType() == "nvarchar(max)"))
+                property.SetColumnType("TEXT");
             foreach (var type in new[] { typeof(Reservation), typeof(BookingSession), typeof(Payment), typeof(WalletAccount) })
                 builder.Entity(type).Property("RowVersion").ValueGeneratedNever();
             // SQLite maps decimal to TEXT by default, making SQL CHECK column comparisons

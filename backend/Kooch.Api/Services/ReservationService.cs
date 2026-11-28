@@ -239,8 +239,9 @@ public partial class ReservationService(
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         RedactUnownedLegacyTraveler(response, reservation, userId);
-        await ApplyGuestPaymentSummaryAsync(response, reservation, DateTime.UtcNow, cancellationToken);
+        await ApplyGuestPaymentSummaryAsync(response, reservation, userId, DateTime.UtcNow, cancellationToken);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
+        RedactGuestInternalPaymentMetadata(response, reservation);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
             .Where(usage => usage.ReservationId == reservationId)
             .SumAsync(usage => (decimal?)usage.DiscountAmount, cancellationToken) ?? 0;
@@ -266,8 +267,9 @@ public partial class ReservationService(
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         RedactUnownedLegacyTraveler(response, reservation, userId);
-        await ApplyGuestPaymentSummaryAsync(response, reservation, DateTime.UtcNow, cancellationToken);
+        await ApplyGuestPaymentSummaryAsync(response, reservation, userId, DateTime.UtcNow, cancellationToken);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
+        RedactGuestInternalPaymentMetadata(response, reservation);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
             .Where(usage => usage.ReservationId == reservation.Id)
             .SumAsync(usage => (decimal?)usage.DiscountAmount, cancellationToken) ?? 0;
@@ -2966,35 +2968,6 @@ public partial class ReservationService(
                paymentExpiresAtUtc.HasValue &&
                paymentExpiresAtUtc.Value > now &&
                remainingAmount > 0;
-    }
-
-    private async Task ApplyGuestPaymentSummaryAsync(
-        ReservationResponse response,
-        Reservation reservation,
-        DateTime now,
-        CancellationToken cancellationToken)
-    {
-        var paidAmount = await dbContext.Payments.AsNoTracking()
-            .Where(payment =>
-                payment.ReservationId == reservation.Id &&
-                payment.Status == PaymentStatus.Successful)
-            .Select(payment => (decimal?)payment.Amount)
-            .SumAsync(cancellationToken) ?? 0;
-        if (reservation.Source == ReservationSource.AdminCreated)
-            paidAmount += await dbContext.PaymentItems.AsNoTracking()
-                .Where(item => item.ReservationId == reservation.Id && item.Payment.Channel == PaymentChannel.Manual &&
-                    item.Payment.Status == PaymentStatus.Successful)
-                .SumAsync(item => (decimal?)item.AllocatedAmount, cancellationToken) ?? 0;
-        var remainingAmount = Math.Max(0, reservation.FinalAmount - paidAmount);
-
-        response.PaidAmount = paidAmount;
-        response.RemainingAmount = remainingAmount;
-        response.IsPaymentEligible = !ReservationPaymentFlow.RequiresSessionPayment(reservation) &&
-            IsPaymentEligible(
-                reservation.Status,
-                reservation.PaymentExpiresAtUtc,
-                remainingAmount,
-                now);
     }
 
     private static int? GetRemainingPaymentSeconds(

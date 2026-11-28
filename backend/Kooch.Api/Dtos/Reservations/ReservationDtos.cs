@@ -70,6 +70,10 @@ public class ReservationListItemResponse
 
 public class ReservationResponse : ReservationListItemResponse
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GuestReservationPaymentSummary? GuestPaymentSummary { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public GuestReservationOrderSummary? GuestOrder { get; set; }
     public AdminReservationCancellationRequestResponse? CancellationRequest { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ReservationCancellationOutcomeResponse? CancellationOutcome { get; set; }
@@ -113,6 +117,42 @@ public class ReservationResponse : ReservationListItemResponse
     public bool CanPrepareManualPayment { get; set; }
     public IReadOnlyList<ReservationTimelineEventResponse> Timeline { get; set; } = [];
 }
+
+public sealed class GuestReservationPaymentSummary
+{
+    public decimal ConfirmedPaidAmount { get; set; }
+    public decimal PendingReviewAmount { get; set; }
+    public decimal UnpaidAmount { get; set; }
+    public decimal CollectibleAmount { get; set; }
+    public bool UsesOrderPayment { get; set; }
+    public bool CanPayOrder { get; set; }
+    public IReadOnlyList<GuestManualReceiptResponse> ManualReceipts { get; set; } = [];
+}
+
+public sealed class GuestManualReceiptResponse
+{
+    // For shared receipts this is this reservation's allocation, never the order total.
+    public decimal Amount { get; set; }
+    public string CurrencyLabel { get; set; } = string.Empty;
+    public ManualPaymentMethod Method { get; set; }
+    public string? Reference { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
+    public DateTime RegisteredAtUtc { get; set; }
+    public ManualPaymentVerificationStatus VerificationStatus { get; set; }
+    public bool HasActiveReviewProtection { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
+    public DateTime? ReviewProtectionExpiresAtUtc { get; set; }
+}
+
+public sealed class GuestReservationOrderSummary
+{
+    public string OrderCode { get; set; } = string.Empty;
+    public bool IncludesAllReservations { get; set; }
+    public IReadOnlyList<GuestOrderReservationResponse> Reservations { get; set; } = [];
+}
+
+public sealed record GuestOrderReservationResponse(string ReservationNumber, string RoomTypeName,
+    ReservationStatus Status);
 
 public enum ReservationTimelineEventType
 {
